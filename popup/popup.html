@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser Jarvis</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" fill="#3b82f6" />
+          <path d="M8 12h8M12 8v8" stroke="#fff" stroke-width="2" stroke-linecap="round" />
+          <circle cx="12" cy="12" r="3" fill="#fff" />
+        </svg>
+        <span class="header-title">Browser Jarvis</span>
+      </div>
+      <span class="header-badge">AI Dev Assistant</span>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="chat" role="tab" aria-selected="true" title="Chat">
+        <span class="tab-icon">💬</span>
+        <span class="tab-label">Chat</span>
+      </button>
+      <button class="tab" data-tab="explain" role="tab" aria-selected="false" title="Explain Code">
+        <span class="tab-icon">🔍</span>
+        <span class="tab-label">Explain</span>
+      </button>
+      <button class="tab" data-tab="error" role="tab" aria-selected="false" title="Error Analyzer">
+        <span class="tab-icon">🐛</span>
+        <span class="tab-label">Errors</span>
+      </button>
+      <button class="tab" data-tab="command" role="tab" aria-selected="false" title="Command Generator">
+        <span class="tab-icon">⚡</span>
+        <span class="tab-label">Commands</span>
+      </button>
+      <button class="tab" data-tab="settings" role="tab" aria-selected="false" title="Settings">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">Settings</span>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="content">
+
+      <!-- ── Chat Tab ── -->
+      <section id="tab-chat" class="tab-panel active" role="tabpanel">
+        <div class="input-group">
+          <label class="input-label" for="chat-input">Ask Jarvis anything about development</label>
+          <textarea
+            id="chat-input"
+            class="textarea"
+            placeholder="e.g. What is the difference between useEffect and useLayoutEffect in React?&#10;Or: How do I reverse a linked list?&#10;Or: Best practices for REST API error handling?"
+            rows="4"
+          ></textarea>
+        </div>
+        <div class="action-row">
+          <button id="chat-fetch-selection" class="btn btn-secondary btn-sm">📋 Use page selection</button>
+          <button id="chat-submit" class="btn btn-primary">Ask Jarvis →</button>
+        </div>
+        <div id="chat-output" class="output hidden"></div>
+      </section>
+
+      <!-- ── Explain Tab ── -->
+      <section id="tab-explain" class="tab-panel" role="tabpanel" hidden>
+        <div class="input-group">
+          <label class="input-label" for="explain-input">Paste code to explain</label>
+          <textarea
+            id="explain-input"
+            class="textarea monospace"
+            placeholder="// Paste your code here&#10;function mystery(arr) {&#10;  return arr.reduce((a, b) => a + b, 0) / arr.length;&#10;}"
+            rows="6"
+          ></textarea>
+        </div>
+        <div class="action-row">
+          <button id="explain-fetch-selection" class="btn btn-secondary btn-sm">📋 Use page selection</button>
+          <button id="explain-submit" class="btn btn-primary">Explain Code →</button>
+        </div>
+        <div id="explain-output" class="output hidden"></div>
+      </section>
+
+      <!-- ── Error Tab ── -->
+      <section id="tab-error" class="tab-panel" role="tabpanel" hidden>
+        <div class="input-group">
+          <label class="input-label" for="error-input">Paste error message or stack trace</label>
+          <textarea
+            id="error-input"
+            class="textarea monospace"
+            placeholder="TypeError: Cannot read properties of undefined (reading 'map')&#10;    at App.render (App.jsx:42:18)&#10;    at ..."
+            rows="6"
+          ></textarea>
+        </div>
+        <div class="action-row">
+          <button id="error-fetch-selection" class="btn btn-secondary btn-sm">📋 Use page selection</button>
+          <button id="error-submit" class="btn btn-primary">Analyze Error →</button>
+        </div>
+        <div id="error-output" class="output hidden"></div>
+      </section>
+
+      <!-- ── Command Tab ── -->
+      <section id="tab-command" class="tab-panel" role="tabpanel" hidden>
+        <div class="input-group">
+          <label class="input-label" for="command-input">Describe what you want to do</label>
+          <textarea
+            id="command-input"
+            class="textarea"
+            placeholder="e.g. Undo the last git commit but keep my changes&#10;Or: Install all npm packages and ignore peer dependency errors&#10;Or: Find all files larger than 100MB in current directory"
+            rows="4"
+          ></textarea>
+        </div>
+        <div class="action-row">
+          <button id="command-fetch-selection" class="btn btn-secondary btn-sm">📋 Use page selection</button>
+          <button id="command-submit" class="btn btn-primary">Generate Command →</button>
+        </div>
+        <div id="command-output" class="output hidden"></div>
+      </section>
+
+      <!-- ── Settings Tab ── -->
+      <section id="tab-settings" class="tab-panel" role="tabpanel" hidden>
+        <div class="settings-section">
+          <h3 class="settings-heading">🔑 OpenAI API Key</h3>
+          <p class="settings-description">
+            Your API key is stored locally in your browser and never sent anywhere except directly to OpenAI.
+            Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.
+          </p>
+          <div class="input-group">
+            <label class="input-label" for="api-key-input">API Key</label>
+            <div class="key-input-row">
+              <input
+                id="api-key-input"
+                type="password"
+                class="input"
+                placeholder="sk-..."
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button id="toggle-key-visibility" class="btn btn-icon" title="Show/hide key" aria-label="Toggle key visibility">👁</button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="model-select">Model</label>
+            <select id="model-select" class="select">
+              <option value="gpt-4o-mini">GPT-4o Mini (Fast &amp; cheap — recommended)</option>
+              <option value="gpt-4o">GPT-4o (Most capable)</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Legacy)</option>
+            </select>
+          </div>
+
+          <button id="save-settings" class="btn btn-primary btn-full">Save Settings</button>
+          <p id="settings-status" class="status-message hidden"></p>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-heading">📖 How to use</h3>
+          <ul class="how-to-list">
+            <li><strong>💬 Chat</strong> — Ask any dev question in natural language</li>
+            <li><strong>🔍 Explain</strong> — Paste code to get a clear explanation</li>
+            <li><strong>🐛 Errors</strong> — Paste error/stack trace for instant diagnosis</li>
+            <li><strong>⚡ Commands</strong> — Describe a task, get the exact command</li>
+            <li><strong>Right-click</strong> — Select text on any page and use the context menu</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <!-- API Key Warning Banner -->
+    <div id="api-key-warning" class="warning-banner hidden">
+      ⚠️ Set your OpenAI API key in <button class="link-btn" id="go-to-settings">Settings</button> to start using Jarvis.
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

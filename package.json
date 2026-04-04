@@ -1,0 +1,19 @@
+{
+  "name": "browser-jarvis",
+  "version": "1.0.0",
+  "description": "AI-powered browser extension that makes developers more productive — code explainer, error analyzer, command generator, and dev chat.",
+  "keywords": ["chrome-extension", "ai", "developer-tools", "openai", "productivity"],
+  "author": "SanketHarde7",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SanketHarde7/browser-jarvis"
+  },
+  "scripts": {
+    "build": "echo 'No build step required. Load the extension directly in Chrome.'",
+    "lint": "echo 'No linter configured. Files are plain JS/HTML/CSS.'"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
