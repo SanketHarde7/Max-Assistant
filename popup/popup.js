@@ -335,13 +335,20 @@ function renderMarkdown(text) {
   html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
   html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
 
-  // Numbered lists
-  html = html.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ol>${m}</ol>`);
+  // Use unique null-byte delimited markers to avoid ordered/unordered list confusion.
+  // \x00 cannot appear in HTML-escaped user text so it is safe as a marker.
+  html = html.replace(/^\d+\. (.+)$/gm, "\x00OL\x00$1\x00/OL\x00");
+  html = html.replace(/^[-*] (.+)$/gm, "\x00UL\x00$1\x00/UL\x00");
 
-  // Unordered lists
-  html = html.replace(/^[-*] (.+)$/gm, "<li>$1</li>");
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`);
+  // Wrap consecutive OL markers into <ol>
+  html = html.replace(/(\x00OL\x00[^\x00]*\x00\/OL\x00\n?)+/g, (m) =>
+    "<ol>" + m.replace(/\x00OL\x00([^\x00]*)\x00\/OL\x00\n?/g, "<li>$1</li>") + "</ol>"
+  );
+
+  // Wrap consecutive UL markers into <ul>
+  html = html.replace(/(\x00UL\x00[^\x00]*\x00\/UL\x00\n?)+/g, (m) =>
+    "<ul>" + m.replace(/\x00UL\x00([^\x00]*)\x00\/UL\x00\n?/g, "<li>$1</li>") + "</ul>"
+  );
 
   // Horizontal rule
   html = html.replace(/^---$/gm, "<hr/>");
@@ -356,8 +363,8 @@ function renderMarkdown(text) {
     .replace(/<p>(<(?:h[123]|pre|ul|ol|hr)[^>]*>)/g, "$1")
     .replace(/(<\/(?:h[123]|pre|ul|ol|hr)>)<\/p>/g, "$1");
 
-  // Single newlines → <br> inside paragraphs
-  html = html.replace(/(?<!>)\n(?!<)/g, "<br>");
+  // Single newlines that are between text (not adjacent to HTML tags) → <br>
+  html = html.replace(/([^>])\n([^<])/g, "$1<br>$2");
 
   return html;
 }
