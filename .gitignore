@@ -1,0 +1,113 @@
+# ═══════════════════════════════════════════
+# PYTHON
+# ═══════════════════════════════════════════
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ═══════════════════════════════════════════
+# NODE.JS / FRONTEND
+# ═══════════════════════════════════════════
+node_modules/
+dist/
+build/
+npm-debug.log
+yarn-error.log
+yarn-debug.log*
+.pnp
+.pnp.js
+
+# ═══════════════════════════════════════════
+# IDE & EDITOR
+# ═══════════════════════════════════════════
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+
+# ═══════════════════════════════════════════
+# ENVIRONMENT & CONFIG
+# ═══════════════════════════════════════════
+.env
+.env.local
+.env.*.local
+config.local.py
+*.key
+*.pem
+secrets/
+
+# ═══════════════════════════════════════════
+# DATA & LOGS
+# ═══════════════════════════════════════════
+backend/data/memory.json
+backend/data/jarvis_config.json
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# ═══════════════════════════════════════════
+# AUDIO & MEDIA (if large)
+# ═══════════════════════════════════════════
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.aac
+
+# ═══════════════════════════════════════════
+# TEMP & CACHE
+# ═══════════════════════════════════════════
+.cache/
+.tmp/
+tmp/
+temp/
+*.tmp
+*.bak
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ═══════════════════════════════════════════
+# OS
+# ═══════════════════════════════════════════
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+*.lnk
