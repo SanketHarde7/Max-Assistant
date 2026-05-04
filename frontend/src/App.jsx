@@ -3,7 +3,7 @@
  * Full integration: 3D Orb + Voice Pipeline + Text Chat + Skills
  * Built with Three.js, Framer Motion & Glassmorphism
  */
-import { useState, useCallback, Suspense } from 'react'
+import { useState, useCallback, Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -50,9 +50,19 @@ function App() {
   // ── WebSocket Event Handler ──
   const handleWsEvent = useCallback(
     (data) => {
-      const { event } = data
+      const event = data?.event || data?.type
 
       switch (event) {
+        case 'greeting':
+          if (data.text) {
+            setMessages((prev) => [
+              ...prev,
+              { role: 'jarvis', content: data.text },
+            ])
+          }
+          setJarvisState('idle')
+          break
+
         case 'status_update':
           if (data.state) setJarvisState(data.state)
           break
@@ -73,6 +83,17 @@ function App() {
               { role: 'jarvis', content: data.text },
             ])
           }
+          setJarvisState('idle')
+          break
+
+        case 'response':
+          if (data.text) {
+            setMessages((prev) => [
+              ...prev,
+              { role: 'jarvis', content: data.text },
+            ])
+          }
+          setJarvisState('idle')
           break
 
         case 'audio_response':
@@ -110,6 +131,30 @@ function App() {
     'ws://localhost:8000/ws',
     { onEvent: handleWsEvent }
   )
+
+  // ── Global Kill Switch ──
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        console.log('🛑 Kill switch triggered')
+        stopAudio()
+        setJarvisState('idle')
+
+        try {
+          const ws = new WebSocket('ws://localhost:8000/ws')
+          ws.onopen = () => {
+            ws.send(JSON.stringify({ type: 'abort' }))
+            ws.close()
+          }
+        } catch (err) {
+          console.warn('Could not send abort signal', err)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [stopAudio])
 
   // ── Voice Handlers ──
   const handleMicPress = async () => {
@@ -409,7 +454,7 @@ function App() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Mic Button */}
+        {/* Main Mic Button */}
         <motion.button
           id="mic-button"
           onMouseDown={handleMicPress}
@@ -457,6 +502,49 @@ function App() {
             ? '🔊  SPEAKING...'
             : '🎙️  HOLD TO SPEAK'}
         </motion.button>
+
+        {/* NEW: Explicit Kill Switch Button */}
+        <AnimatePresence>
+          {(jarvisState === 'thinking' || jarvisState === 'speaking') && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={() => {
+                console.log('🛑 Kill switch triggered via UI');
+                stopAudio();
+                setJarvisState('idle');
+                try {
+                  const ws = new WebSocket('ws://localhost:8000/ws');
+                  ws.onopen = () => {
+                    ws.send(JSON.stringify({ type: 'abort' }));
+                    ws.close();
+                  };
+                } catch (err) {
+                  console.warn('Could not send abort signal', err);
+                }
+              }}
+              style={{
+                marginTop: '10px',
+                padding: '0.6rem 1.5rem',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                fontFamily: "'Orbitron', monospace",
+                background: 'rgba(255, 58, 58, 0.1)',
+                color: '#ff3a3a',
+                border: '1px solid rgba(255, 58, 58, 0.5)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 0 10px rgba(255, 58, 58, 0.2)',
+                transition: 'all 0.2s',
+              }}
+              whileHover={{ background: 'rgba(255, 58, 58, 0.2)', scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              🛑 STOP JARVIS
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Chat Panel */}

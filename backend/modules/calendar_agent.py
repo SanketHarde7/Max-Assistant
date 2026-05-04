@@ -1,0 +1,84 @@
+"""
+calendar_agent.py — JARVIS v4.0
+Local .ics calendar (zero setup, offline). No Google API needed.
+Skills: calendar_today, calendar_add, calendar_week
+"""
+import json
+import logging
+from pathlib import Path
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional
+from config import config
+
+logger = logging.getLogger("JARVIS.CALENDAR")
+
+CALENDAR_FILE = Path(config.DATA_DIR) / "calendar.json"
+
+
+def _load_events() -> List[Dict]:
+    if CALENDAR_FILE.exists():
+        try:
+            return json.loads(CALENDAR_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return []
+
+
+def _save_events(events: List[Dict]):
+    CALENDAR_FILE.write_text(json.dumps(events, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+class CalendarAgent:
+    """Local JSON-based calendar. No API keys, no cloud."""
+
+    def today(self) -> str:
+        events = _load_events()
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        todays = [e for e in events if e.get("date", "").startswith(today_str)]
+        todays.sort(key=lambda x: x.get("time", ""))
+        if not todays:
+            return f"Aaj {today_str} — koi schedule nahi hai bhai. Free ho!"
+        lines = [f"📅 Aaj ka schedule ({today_str}):"]
+        for e in todays:
+            lines.append(f"  {e.get('time', '?')} — {e.get('title', 'No title')}")
+        return "\n".join(lines)
+
+    def week(self) -> str:
+        events = _load_events()
+        now = datetime.now()
+        week_dates = [(now + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+        week_events = [e for e in events if any(e.get("date", "").startswith(d) for d in week_dates)]
+        week_events.sort(key=lambda x: (x.get("date", ""), x.get("time", "")))
+        if not week_events:
+            return "Is hafte koi schedule nahi hai bhai. Chill mode on!"
+        lines = ["📅 Is hafte ka schedule:"]
+        for e in week_events:
+            lines.append(f"  {e.get('date', '?')} {e.get('time', '?')} — {e.get('title', 'No title')}")
+        return "\n".join(lines)
+
+    def add_event(self, title: str, date_str: str, time_str: str = "") -> str:
+        try:
+            # Validate date
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            return f"Date format sahi nahi hai bhai. Use: YYYY-MM-DD (jaise 2026-05-04)"
+        events = _load_events()
+        events.append({
+            "title": title,
+            "date": date_str,
+            "time": time_str or "00:00",
+            "created": datetime.now().isoformat(),
+        })
+        _save_events(events)
+        return f"Event add ho gayi bhai — '{title}' on {date_str}."
+
+
+# Singleton
+_calendar_agent: Optional[CalendarAgent] = None
+
+
+def get_calendar_agent() -> CalendarAgent:
+    global _calendar_agent
+    if _calendar_agent is None:
+        _calendar_agent = CalendarAgent()
+    return _calendar_agent

@@ -1,19 +1,17 @@
 """
-Enhanced Configuration Manager v3.0
-Centralized config with workspace, search, and agent settings.
+config.py — JARVIS v4.0
+Added: Email, SmartHome, Browser, Plugin system configs.
 """
 import os
-import re
-import sys
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("JARVIS.CONFIG")
 
 
 def get_project_root() -> Path:
-    """Detect project root directory."""
     current = Path(__file__).resolve()
     if current.parent.name == "backend":
         return current.parent.parent
@@ -21,275 +19,209 @@ def get_project_root() -> Path:
 
 
 PROJECT_ROOT = get_project_root()
-env_path = PROJECT_ROOT / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=str(env_path))
+
+env_file = PROJECT_ROOT / "backend" / ".env"
+if env_file.exists():
+    load_dotenv(dotenv_path=str(env_file), override=True)
+    logger.info(f"✅ .env loaded from: {env_file}")
 else:
-    load_dotenv()
+    load_dotenv(override=True)
 
 
 class Config:
-    """Centralized configuration with agent-level settings."""
 
-    # ─── Paths ───
+    # ── Server ──
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "8000"))
+    SKILLS_ENABLED: bool = True
+
+    # ── Paths ──
     PROJECT_ROOT: Path = PROJECT_ROOT
     BACKEND_DIR: Path = PROJECT_ROOT / "backend"
     DATA_DIR: Path = BACKEND_DIR / "data"
+    WORKSPACE_DIR: Path = Path(os.getenv("WORKSPACE_DIR", str(Path.home() / "projects")))
+    CODE_SAVE_DIR: Path = Path(os.getenv("CODE_SAVE_DIR", str(Path.home() / "projects" / "jarvis-generated")))
+    PLUGINS_DIR: Path = Path(os.getenv("PLUGINS_DIR", str(BACKEND_DIR / "plugins")))
 
-    # ─── API Keys ───
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    # ── Search Dirs — used by file_manager ──
+    @property
+    def SEARCH_DIRS(self) -> list:
+        raw = os.getenv("SEARCH_DIRS", "")
+        dirs = [Path(p.strip()) for p in raw.split(",") if p.strip()]
+        if not dirs:
+            dirs = [self.WORKSPACE_DIR, Path.home() / "Desktop", Path.home() / "Documents"]
+        return dirs
 
-    # ─── LLM ───
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "whisper-large-v3")
-
-    # ─── TTS ───
-    TTS_VOICE: str = os.getenv("TTS_VOICE", "en-US-GuyNeural")
-    TTS_RATE: str = os.getenv("TTS_RATE", "+0%")
-    TTS_PITCH: str = os.getenv("TTS_PITCH", "+0Hz")
-
-    # ─── Server ───
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
-    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
-
-    # ─── Memory ───
-    MEMORY_FILE: str = os.getenv("MEMORY_FILE", str(DATA_DIR / "memory.json"))
+    # ── Memory ──
+    MEMORY_FILE: str = str(DATA_DIR / "memory.json")
     MEMORY_MAX_MESSAGES: int = int(os.getenv("MEMORY_MAX_MESSAGES", "20"))
     MEMORY_SUMMARIZE_THRESHOLD: int = int(os.getenv("MEMORY_SUMMARIZE_THRESHOLD", "20"))
 
-    # ─── Skills ───
-    SKILLS_ENABLED: bool = os.getenv("SKILLS_ENABLED", "true").lower() == "true"
-
-    # ─── WORKSPACE & CODE SETTINGS (NEW v3.0) ───
-    WORKSPACE_DIR: Path = Path(os.getenv("WORKSPACE_DIR", str(Path.home() / "projects")))
-    SEARCH_DIRS: list = [
-        Path(p.strip())
-        for p in os.getenv("SEARCH_DIRS", str(WORKSPACE_DIR)).split(",")
-        if p.strip()
-    ]
-    CODE_SAVE_DIR: Path = Path(os.getenv("CODE_SAVE_DIR", str(WORKSPACE_DIR / "jarvis-generated")))
+    # ── File Handling ──
     MAX_FILE_SIZE_KB: int = int(os.getenv("MAX_FILE_SIZE_KB", "5000"))
 
-    # ─── AGENT SETTINGS (NEW v3.0) ───
+    # ── TTS Settings ──
+    TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-PrabhatNeural")
+    TTS_RATE: str = os.getenv("TTS_RATE", "+0%")
+    TTS_PITCH: str = os.getenv("TTS_PITCH", "+0Hz")
+
+    # ── AI Models ──
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "whisper-large-v3")
+    VISION_MODEL: str = os.getenv("VISION_MODEL", "llama-3.2-90b-vision-preview")
+
+    # ── Agent Settings ──
     AGENT_MAX_STEPS: int = int(os.getenv("AGENT_MAX_STEPS", "10"))
+    AGENT_CODE_TIMEOUT: int = int(os.getenv("AGENT_CODE_TIMEOUT", "30"))
     AGENT_AUTO_CORRECT: bool = os.getenv("AGENT_AUTO_CORRECT", "true").lower() == "true"
     AGENT_LEARN_PREFERENCES: bool = os.getenv("AGENT_LEARN_PREFERENCES", "true").lower() == "true"
-    AGENT_CODE_TIMEOUT: int = int(os.getenv("AGENT_CODE_TIMEOUT", "30"))
 
-    # ─── Supported Languages for Code Gen ───
+    # ── Email Settings ──
+    EMAIL_ADDRESS: str = os.getenv("EMAIL_ADDRESS", "")
+    EMAIL_APP_PASSWORD: str = os.getenv("EMAIL_APP_PASSWORD", "")
+    IMAP_SERVER: str = os.getenv("IMAP_SERVER", "imap.gmail.com")
+    SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+
+    # ── Smart Home ──
+    IR_BLASTER_ENABLED: bool = os.getenv("IR_BLASTER_ENABLED", "false").lower() == "true"
+    IR_BLASTER_IP: str = os.getenv("IR_BLASTER_IP", "")
+    IR_BLASTER_TYPE: str = os.getenv("IR_BLASTER_TYPE", "broadlink")  # broadlink or tuya
+    TUYA_DEVICE_ID: str = os.getenv("TUYA_DEVICE_ID", "")
+    TUYA_LOCAL_KEY: str = os.getenv("TUYA_LOCAL_KEY", "")
+    TUYA_DEVICE_IP: str = os.getenv("TUYA_DEVICE_IP", "")
+    TUYA_DEVICE_VERSION: str = os.getenv("TUYA_DEVICE_VERSION", "3.3")
+
+    # ── Browser ──
+    BROWSER_HEADLESS: bool = os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
+    BROWSER_TIMEOUT: int = int(os.getenv("BROWSER_TIMEOUT", "15"))
+
+    # ── Code Languages ──
     CODE_LANGUAGES: dict = {
-        "python": ".py",
-        "javascript": ".js",
-        "typescript": ".ts",
-        "java": ".java",
-        "cpp": ".cpp",
-        "c": ".c",
-        "go": ".go",
-        "rust": ".rs",
-        "ruby": ".rb",
-        "php": ".php",
-        "swift": ".swift",
-        "kotlin": ".kt",
-        "html": ".html",
-        "css": ".css",
-        "sql": ".sql",
-        "bash": ".sh",
-        "powershell": ".ps1",
+        "python": ".py", "javascript": ".js", "typescript": ".ts",
+        "java": ".java", "cpp": ".cpp", "c": ".c", "go": ".go",
+        "rust": ".rs", "ruby": ".rb", "php": ".php", "swift": ".swift",
+        "html": ".html", "css": ".css", "sql": ".sql", "bash": ".sh",
+        "solidity": ".sol", "powershell": ".ps1",
     }
 
-    # ─── Project Templates ───
+    # ── Project Templates ──
     PROJECT_TEMPLATES: dict = {
         "react": {
             "dirs": ["src/components", "src/hooks", "src/styles", "public"],
             "files": {
-                "package.json": '{"name": "{{name}}", "version": "0.1.0", "dependencies": {"react": "^18", "react-dom": "^18", "react-scripts": "5.0.1"}, "scripts": {"start": "react-scripts start", "build": "react-scripts build"}}',
+                "package.json": '{"name":"{{name}}","version":"0.1.0","dependencies":{"react":"^18","react-dom":"^18","react-scripts":"5.0.1"},"scripts":{"start":"react-scripts start","build":"react-scripts build"}}',
+                "src/App.js": 'function App() { return <div><h1>{{name}}</h1></div>; } export default App;',
+                "src/index.js": 'import React from "react"; import ReactDOM from "react-dom/client"; import App from "./App"; ReactDOM.createRoot(document.getElementById("root")).render(<App />);',
                 "public/index.html": '<!DOCTYPE html><html><head><title>{{name}}</title></head><body><div id="root"></div></body></html>',
-                "src/index.js": 'import React from "react"; import ReactDOM from "react-dom/client"; import App from "./App"; import "./styles/index.css"; const root = ReactDOM.createRoot(document.getElementById("root")); root.render(<App />);',
-                "src/App.js": 'import React from "react"; import "./styles/App.css"; function App() { return <div className="App"><h1>Welcome to {{name}}</h1></div>; } export default App;',
-                "src/styles/App.css": ".App { text-align: center; padding: 20px; }",
-                "src/styles/index.css": "* { margin: 0; padding: 0; box-sizing: border-box; }",
             },
         },
         "python": {
-            "dirs": ["src", "tests", "docs"],
+            "dirs": ["src", "tests"],
             "files": {
-                "requirements.txt": "",
-                "src/__init__.py": "",
                 "src/main.py": "def main():\n    print('Hello from {{name}}!')\n\nif __name__ == '__main__':\n    main()",
-                "README.md": "# {{name}}\n\nPython project generated by JARVIS.",
-            },
-        },
-        "node": {
-            "dirs": ["src", "tests", "config"],
-            "files": {
-                "package.json": '{"name": "{{name}}", "version": "1.0.0", "main": "src/index.js", "scripts": {"start": "node src/index.js", "dev": "nodemon src/index.js"}}',
-                "src/index.js": "console.log('Hello from {{name}}!');",
-                "README.md": "# {{name}}\\n\\nNode.js project generated by JARVIS.",
+                "requirements.txt": "",
+                "README.md": "# {{name}}\n\nPython project.",
             },
         },
         "fastapi": {
-            "dirs": ["app", "app/api", "app/models", "app/services", "tests"],
+            "dirs": ["app", "app/api", "app/models", "tests"],
             "files": {
-                "requirements.txt": "fastapi>=0.115.0\nuvicorn[standard]>=0.30.0\npydantic>=2.9.0\npython-dotenv>=1.0.0\nhttpx>=0.27.0",
-                "app/__init__.py": "",
-                "app/main.py": "from fastapi import FastAPI\nfrom app.api import routes\n\napp = FastAPI(title='{{name}}', version='1.0.0')\napp.include_router(routes.router, prefix='/api')\n\n@app.get('/')\ndef root():\n    return {'message': 'Welcome to {{name}}'}",
-                "app/api/__init__.py": "",
-                "app/api/routes.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.get('/health')\ndef health():\n    return {'status': 'ok'}",
-                "app/models/__init__.py": "",
-                "app/services/__init__.py": "",
-                "README.md": "# {{name}}\\n\\nFastAPI project generated by JARVIS.\\n\\n## Run\\n```\\nuvicorn app.main:app --reload\\n```",
+                "app/main.py": "from fastapi import FastAPI\n\napp = FastAPI(title='{{name}}')\n\n@app.get('/')\ndef root():\n    return {'message': 'Welcome to {{name}}'}",
+                "requirements.txt": "fastapi>=0.115.0\nuvicorn[standard]>=0.30.0",
+                "README.md": "# {{name}}\n\nFastAPI project.\n\n## Run\n```\nuvicorn app.main:app --reload\n```",
+            },
+        },
+        "node": {
+            "dirs": ["src"],
+            "files": {
+                "src/index.js": "console.log('Hello from {{name}}!');",
+                "package.json": '{"name":"{{name}}","version":"1.0.0","scripts":{"start":"node src/index.js"}}',
             },
         },
     }
 
-    # ─── File Type Icons for Display ───
+    # ── File Icons ──
     FILE_ICONS: dict = {
         ".py": "🐍", ".js": "📜", ".ts": "🔷", ".jsx": "⚛️", ".tsx": "⚛️",
         ".java": "☕", ".cpp": "🔧", ".c": "🔧", ".go": "🐹", ".rs": "🦀",
-        ".rb": "💎", ".php": "🐘", ".swift": "🍎", ".kt": "📱",
-        ".html": "🌐", ".css": "🎨", ".scss": "🎨", ".json": "📋",
-        ".md": "📝", ".txt": "📄", ".sql": "🗄️", ".sh": "🐚",
-        ".yml": "⚙️", ".yaml": "⚙️", ".env": "🔐", ".gitignore": "🚫",
+        ".html": "🌐", ".css": "🎨", ".json": "📋", ".md": "📝",
+        ".txt": "📄", ".sql": "🗄️", ".sh": "🐚", ".env": "🔐",
         "folder": "📁", "default": "📄",
     }
 
-    # ─── App Launch Maps (Enhanced) ───
+    # ── App Maps ── (for skills.py open_app)
     WINDOWS_APP_MAP: dict = {
-        "notepad": "notepad.exe",
-        "calculator": "calc.exe",
-        "paint": "mspaint.exe",
-        "cmd": "cmd.exe",
-        "terminal": "wt.exe",
-        "powershell": "powershell.exe",
-        "explorer": "explorer.exe",
-        "task manager": "taskmgr.exe",
-        "chrome": "start chrome",
-        "firefox": "start firefox",
-        "edge": "start msedge",
-        "brave": "start brave",
-        "opera": "start opera",
-        "vscode": "code",
-        "vs code": "code",
-        "code": "code",
-        "word": "start winword",
-        "excel": "start excel",
-        "powerpoint": "start powerpnt",
-        "outlook": "start outlook",
-        "teams": "start teams",
-        "spotify": "start spotify",
-        "whatsapp": "start whatsapp",
-        "discord": "start discord",
-        "slack": "start slack",
-        "zoom": "start zoom",
-        "obs": "start obs64",
-        "steam": "start steam",
-        "epic": "start com.epicgames.launcher",
-        "vlc": "start vlc",
-        "notepad++": "start notepad++",
-        "postman": "start postman",
-        "figma": "start figma",
-        "github desktop": "start github",
-        "docker desktop": "start docker desktop",
-        "pycharm": "pycharm64",
-        "intellij": "idea64",
-        "android studio": "studio64",
-        "filezilla": "filezilla",
-        "putty": "putty",
-        "winrar": "winrar",
-        "7zip": "7zFM",
-        "blender": "blender",
-        "photoshop": "photoshop",
-        "illustrator": "illustrator",
-        "premiere": "adobe premiere pro",
-        "after effects": "afterfx",
-        "davinci": "resolve",
-        "obsidian": "obsidian",
+        "notepad": "notepad.exe", "calculator": "calc.exe",
+        "paint": "mspaint.exe", "cmd": "cmd.exe",
+        "terminal": "wt.exe", "powershell": "powershell.exe",
+        "explorer": "explorer.exe", "task manager": "taskmgr.exe",
+        "chrome": "start chrome", "firefox": "start firefox",
+        "edge": "start msedge", "brave": "start brave",
+        "vscode": "code", "vs code": "code", "code": "code",
+        "word": "start winword", "excel": "start excel",
+        "powerpoint": "start powerpnt", "outlook": "start outlook",
+        "teams": "start teams", "spotify": "start spotify",
+        "whatsapp": "start whatsapp", "discord": "start discord",
+        "slack": "start slack", "zoom": "start zoom",
+        "pycharm": "pycharm64", "intellij": "idea64",
+        "postman": "start postman", "figma": "start figma",
+        "obs": "start obs64", "vlc": "start vlc",
     }
 
     MAC_APP_MAP: dict = {
-        "notepad": "TextEdit",
-        "calculator": "Calculator",
-        "chrome": "Google Chrome",
-        "firefox": "Firefox",
-        "brave": "Brave Browser",
-        "safari": "Safari",
-        "edge": "Microsoft Edge",
-        "vscode": "Visual Studio Code",
-        "vs code": "Visual Studio Code",
-        "code": "Visual Studio Code",
-        "spotify": "Spotify",
-        "discord": "Discord",
-        "slack": "Slack",
-        "zoom": "zoom.us",
-        "obs": "OBS",
-        "steam": "Steam",
-        "vlc": "VLC",
-        "postman": "Postman",
-        "figma": "Figma",
-        "docker": "Docker Desktop",
-        "pycharm": "PyCharm",
-        "intellij": "IntelliJ IDEA",
-        "android studio": "Android Studio",
-        "blender": "Blender",
-        "photoshop": "Adobe Photoshop",
-        "illustrator": "Adobe Illustrator",
-        "premiere": "Adobe Premiere Pro",
-        "obsidian": "Obsidian",
-        "iterm": "iTerm",
-        "terminal": "Terminal",
+        "notepad": "TextEdit", "calculator": "Calculator",
+        "chrome": "Google Chrome", "firefox": "Firefox",
+        "vscode": "Visual Studio Code", "vs code": "Visual Studio Code",
+        "code": "Visual Studio Code", "spotify": "Spotify",
+        "discord": "Discord", "slack": "Slack", "zoom": "zoom.us",
     }
 
     WEB_FALLBACK_MAP: dict = {
         "whatsapp": "https://web.whatsapp.com",
-        "vscode": "https://vscode.dev",
-        "vs code": "https://vscode.dev",
-        "code": "https://vscode.dev",
-        "excel": "https://www.office.com/launch/excel",
-        "word": "https://www.office.com/launch/word",
-        "powerpoint": "https://www.office.com/launch/powerpoint",
-        "outlook": "https://outlook.live.com",
-        "teams": "https://teams.microsoft.com",
-        "youtube": "https://youtube.com",
-        "github": "https://github.com",
-        "gitlab": "https://gitlab.com",
-        "bitbucket": "https://bitbucket.org",
-        "instagram": "https://instagram.com",
-        "facebook": "https://facebook.com",
-        "twitter": "https://twitter.com",
-        "x": "https://x.com",
-        "linkedin": "https://linkedin.com",
-        "reddit": "https://reddit.com",
-        "spotify": "https://open.spotify.com",
-        "gmail": "https://mail.google.com",
-        "drive": "https://drive.google.com",
-        "google": "https://google.com",
-        "maps": "https://maps.google.com",
-        "claude": "https://claude.ai",
-        "chatgpt": "https://chat.openai.com",
-        "perplexity": "https://perplexity.ai",
-        "notion": "https://notion.so",
-        "trello": "https://trello.com",
-        "asana": "https://asana.com",
-        "figma": "https://figma.com",
-        "canva": "https://canva.com",
-        "netflix": "https://netflix.com",
-        "amazon": "https://amazon.com",
-        "flipkart": "https://flipkart.com",
-        "discord": "https://discord.com/app",
+        "vscode": "https://vscode.dev", "vs code": "https://vscode.dev",
+        "youtube": "https://youtube.com", "github": "https://github.com",
+        "instagram": "https://instagram.com", "spotify": "https://open.spotify.com",
+        "gmail": "https://mail.google.com", "drive": "https://drive.google.com",
+        "claude": "https://claude.ai", "chatgpt": "https://chat.openai.com",
+        "notion": "https://notion.so", "figma": "https://figma.com",
+        "twitter": "https://twitter.com", "x": "https://x.com",
+        "linkedin": "https://linkedin.com", "reddit": "https://reddit.com",
+        "netflix": "https://netflix.com", "discord": "https://discord.com/app",
     }
 
+    # ── API Key Rotation ──
+    _current_key_idx: int = 0
 
-# ─── Validation ───
-if not Config.GROQ_API_KEY:
-    logger.warning("GROQ_API_KEY not found in environment. Set it in .env file.")
+    @property
+    def GROQ_API_KEYS(self) -> list:
+        raw = os.getenv("GROQ_API_KEYS", os.getenv("GROQ_API_KEY", ""))
+        return [k.strip() for k in raw.split(",") if k.strip()]
 
-# ─── Ensure directories exist ───
-Config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-Config.WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-Config.CODE_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+    @property
+    def GROQ_API_KEY(self) -> str:
+        return self.get_active_api_key()
 
-for d in Config.SEARCH_DIRS:
-    d.mkdir(parents=True, exist_ok=True)
+    def get_active_api_key(self) -> str:
+        keys = self.GROQ_API_KEYS
+        if not keys:
+            raise ValueError("No GROQ_API_KEY found. Check your .env file.")
+        return keys[self._current_key_idx % len(keys)]
+
+    def rotate_api_key(self) -> bool:
+        keys = self.GROQ_API_KEYS
+        if len(keys) <= 1:
+            return False
+        self._current_key_idx = (self._current_key_idx + 1) % len(keys)
+        logger.info(f"🔄 API Key rotated → index {self._current_key_idx}")
+        return True
+
 
 config = Config()
+
+# Ensure directories exist at startup
+config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+config.WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+config.CODE_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+config.PLUGINS_DIR.mkdir(parents=True, exist_ok=True)

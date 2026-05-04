@@ -1,515 +1,365 @@
 """
-File Manager Module — Agent-Level File Operations
-Handles: find_and_explain, list_files, read_file, edit_file, search_files
-
-Design Principles:
-- Smart file search with context-based filtering
-- 2-pass explanation (read → LLM explain)
-- Safe file operations with backups
-- Context-aware file resolution
+file_manager.py — JARVIS v4.0
+Enhanced file management with search, list, read, edit.
+Friendly tone, no 'sir' overload.
 """
 
 import os
 import re
-import fnmatch
+import json
 import logging
-import subprocess
 from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Tuple
-
-from groq import AsyncGroq
 
 logger = logging.getLogger("JARVIS.FILE_MANAGER")
 
 
 class FileManager:
-    """
-    Agent-level file manager for JARVIS.
-    Smart search, file reading, explanation, and editing.
-    """
+    """Advanced file management for JARVIS."""
 
     def __init__(self, config):
         self.config = config
-        self.workspace = config.WORKSPACE_DIR
-        self.search_dirs = config.SEARCH_DIRS
-        self.code_dir = config.CODE_SAVE_DIR
-        self.max_file_size_kb = config.MAX_FILE_SIZE_KB
-        self.client = AsyncGroq(api_key=config.GROQ_API_KEY)
-        self.file_icons = config.FILE_ICONS
-
-    # ═══════════════════════════════════════════
-    # INTERNAL: Smart File Search
-    # ═══════════════════════════════════════════
-
-    def _find_files(self, filename: str, context_keywords: List[str] = None) -> List[Tuple[Path, float]]:
-        """
-        Smart file search across search directories.
-        Returns ranked list of (path, score) tuples.
-        """
-        matches = []
-        filename_lower = filename.lower().strip()
-
-        # Search all configured directories
-        all_dirs = [self.workspace] + self.search_dirs
-        seen = set()
-
-        for search_dir in all_dirs:
-            if not search_dir.exists():
-                continue
-
-            try:
-                for root, dirs, files in os.walk(search_dir):
-                    # Skip hidden dirs, node_modules, etc.
-                    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in (
-                        'node_modules', '__pycache__', 'venv', '.git', 'dist', 'build'
-                    )]
-
-                    for file in files:
-                        file_lower = file.lower()
-                        file_path = Path(root) / file
-
-                        # Skip if already seen
-                        real_path = file_path.resolve()
-                        if real_path in seen:
-                            continue
-                        seen.add(real_path)
-
-                        # Check filename match
-                        name_match = fnmatch.fnmatch(file_lower, f"*{filename_lower}*")
-
-                        if name_match:
-                            score = 100  # Base score for name match
-
-                            # Context scoring
-                            if context_keywords:
-                                path_str = str(file_path).lower()
-                                folder_name = file_path.parent.name.lower()
-
-                                for keyword in context_keywords:
-                                    keyword_lower = keyword.lower()
-
-                                    # Folder name matches context → boost
-                                    if keyword_lower in folder_name:
-                                        score += 50
-
-                                    # Any parent folder matches
-                                    if keyword_lower in path_str:
-                                        score += 20
-
-                                # Check if file content contains keywords (for extra boost)
-                                if score > 100:
-                                    try:
-                                        content = file_path.read_text(encoding='utf-8', errors='replace')[:2000]
-                                        for keyword in context_keywords:
-                                            if keyword.lower() in content.lower():
-                                                score += 10
-                                    except Exception:
-                                        pass
-
-                            # Prefer workspace over system dirs
-                            if self.workspace in file_path.parents or file_path.parent == self.workspace:
-                                score += 30
-
-                            # Penalize very deep paths
-                            depth = len(file_path.parts)
-                            score -= max(0, depth - 6) * 5
-
-                            matches.append((file_path, score))
-
-            except PermissionError:
-                continue
-            except Exception as e:
-                logger.warning(f"Search error in {search_dir}: {e}")
-
-        # Sort by score descending
-        matches.sort(key=lambda x: x[1], reverse=True)
-        return matches
-
-    def _get_file_icon(self, filepath: Path) -> str:
-        """Get emoji icon for file type."""
-        if filepath.is_dir():
-            return self.file_icons.get("folder", "📁")
-        return self.file_icons.get(filepath.suffix.lower(), self.file_icons.get("default", "📄"))
-
-    def _format_file_size(self, size_bytes: int) -> str:
-        """Human-readable file size."""
-        if size_bytes < 1024:
-            return f"{size_bytes}B"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.1f}KB"
-        else:
-            return f"{size_bytes / (1024 * 1024):.1f}MB"
+        self.search_dirs = config.SEARCH_DIRS if hasattr(config, 'SEARCH_DIRS') else [Path.home() / "Desktop"]
+        self.max_file_size_kb = config.MAX_FILE_SIZE_KB if hasattr(config, 'MAX_FILE_SIZE_KB') else 5000
+        self.file_icons = getattr(config, 'FILE_ICONS', {"folder": "📁", "default": "📄"})
 
     # ═══════════════════════════════════════════
     # SKILL: find_and_explain
     # ═══════════════════════════════════════════
 
-    async def find_and_explain(self, *args) -> str:
-        """
-        Find file by name with optional context, then explain it.
-        Trigger: [SKILL:find_and_explain:filename:context_keywords]
-        Returns: File explanation from LLM.
-        """
-        if not args:
-            return "Kaunsi file dhoondhni hai sir? Filename batao."
-
-        filename = args[0]
-        context = args[1] if len(args) > 1 else ""
-
-        # Parse context keywords
-        context_keywords = []
-        if context:
-            context_keywords = [kw.strip() for kw in re.split(r'[,\s]+', context) if kw.strip()]
-
-        logger.info(f"Finding file: {filename}, context: {context_keywords}")
-
-        # ─── PASS 1: SEARCH ───
-        matches = self._find_files(filename, context_keywords)
-
-        if not matches:
-            return f"Koi bhi '{filename}' file nahi mila sir. Location specify karo?"
-
-        # If multiple matches, pick best one (highest score)
-        # If context provided and best score is high enough, use it directly
-        best_match, best_score = matches[0]
-
-        if len(matches) > 1 and best_score < 150:
-            # Ambiguous — list top matches and let user choose
-            top_matches = matches[:5]
-            lines = [f"'{filename}' ke liye {len(matches)} results mile sir:"]
-            for i, (path, score) in enumerate(top_matches, 1):
-                rel = path.relative_to(self.workspace) if self.workspace in path.parents else path
-                lines.append(f"{i}. {self._get_file_icon(path)} {rel} (score: {score})")
-            lines.append("\nKaunsi chahiye? Number bolo ya exact path do.")
-            return "\n".join(lines)
-
-        # ─── PASS 2: READ & EXPLAIN ───
+    def find_and_explain(self, *args) -> str:
         try:
-            file_size = best_match.stat().st_size
-            size_kb = file_size / 1024
+            if len(args) >= 2:
+                filename = args[0]
+                context = args[1]
+            elif len(args) == 1:
+                filename = args[0]
+                context = ""
+            else:
+                return "File ka naam aur context do bhai."
 
-            if size_kb > self.max_file_size_kb:
-                return f"File bahut badi hai sir ({size_kb:.0f}KB). Max {self.max_file_size_kb}KB allowed."
+            logger.info(f"Searching for: {filename} in context: {context}")
 
-            content = best_match.read_text(encoding='utf-8', errors='replace')
-            rel_path = best_match.relative_to(self.workspace) if self.workspace in best_match.parents else best_match
+            results = self._search_for_file(filename)
+            if not results:
+                return f"'{filename}' kahi nahi mila bhai."
 
-            logger.info(f"Explaining file: {best_match} ({len(content)} chars)")
+            best_match = results[0]
+            content = self._read_file_safe(best_match)
+            icon = self._get_file_icon(best_match)
 
-            # Send to LLM for explanation
-            explanation = await self._explain_with_llm(content, str(rel_path), best_match.suffix)
+            explanation = self._explain_content(content, best_match, context)
 
-            return f"📄 {rel_path} — {self._format_file_size(file_size)}\n\n{explanation}"
+            rel_path = self._make_relative(best_match)
+            response = (
+                f"📁 File: {rel_path} {icon}\n"
+                f"📊 Size: {best_match.stat().st_size:,} bytes | Modified: {datetime.fromtimestamp(best_match.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}\n"
+                f"\n📖 Explanation:\n{explanation}\n\n"
+                f"💡 Quick Actions: is file ka code review kar sakta hoon, run kar sakta hoon, ya koi bug fix kar sakta hoon."
+            )
+
+            if len(results) > 1:
+                others = ", ".join(self._make_relative(r) for r in results[1:3])
+                response += f"\n\n📂 Aur bhi mil gayi: {others}"
+
+            return response
 
         except Exception as e:
             logger.error(f"find_and_explain error: {e}")
-            return f"File read karne mein error sir: {str(e)}"
+            return f"File dhundne mein error aaya bhai: {str(e)}"
 
-    async def _explain_with_llm(self, content: str, filepath: str, extension: str) -> str:
-        """Pass file content to LLM for explanation."""
-        # Truncate if too long
-        max_chars = 4000
-        truncated = content[:max_chars]
-        was_truncated = len(content) > max_chars
+    def _search_for_file(self, filename: str) -> List[Path]:
+        matches = []
+        search_name = filename.lower()
 
-        # Detect language
-        lang_map = {
-            ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
-            ".jsx": "React JSX", ".tsx": "React TSX", ".java": "Java",
-            ".cpp": "C++", ".c": "C", ".go": "Go", ".rs": "Rust",
-            ".rb": "Ruby", ".php": "PHP", ".swift": "Swift",
-            ".kt": "Kotlin", ".html": "HTML", ".css": "CSS",
-            ".sql": "SQL", ".sh": "Shell", ".json": "JSON",
-            ".md": "Markdown", ".yml": "YAML", ".yaml": "YAML",
-        }
-        language = lang_map.get(extension.lower(), "code")
+        for search_dir in self.search_dirs:
+            if not search_dir.exists():
+                continue
+            try:
+                for item in search_dir.rglob("*"):
+                    if item.is_file() and search_name in item.name.lower():
+                        matches.append(item)
+                        if len(matches) >= 5:
+                            break
+            except PermissionError:
+                continue
 
-        prompt = f"""Explain this {language} file in simple words:
+        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return matches[:5]
 
-File: {filepath}
-
-```
-{truncated}
-```
-{"(truncated...)" if was_truncated else ""}
-
-Explain:
-1. What does this file do? (1-2 sentences)
-2. Key functions/components
-3. Any important logic
-Keep it brief and conversational. Mix Hindi-English (Hinglish)."""
-
+    def _read_file_safe(self, filepath: Path) -> str:
         try:
-            response = await self.client.chat.completions.create(
-                model=self.config.LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.6,
-                max_tokens=500,
-            )
-            return response.choices[0].message.content.strip()
+            size = filepath.stat().st_size
+            max_size = self.max_file_size_kb * 1024
+            if size > max_size:
+                with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+                    return f.read(max_size) + "\n\n... (file truncated, bahut bada hai bhai)"
+            return filepath.read_text(encoding='utf-8', errors='replace')
         except Exception as e:
-            logger.error(f"LLM explanation failed: {e}")
-            return f"File content:\n{truncated[:500]}..."
+            return f"Error reading file: {str(e)}"
+
+    def _explain_content(self, content: str, filepath: Path, context: str = "") -> str:
+        lines = content.split('\n')
+        total_lines = len(lines)
+
+        ext = filepath.suffix.lower()
+
+        explanation_parts = []
+
+        if ext == '.py':
+            imports = [l.strip() for l in lines if l.strip().startswith(('import ', 'from '))]
+            functions = [l.strip() for l in lines if l.strip().startswith('def ')]
+            classes = [l.strip() for l in lines if l.strip().startswith('class ')]
+
+            explanation_parts.append(f"Python script hai bhai. {total_lines} lines.")
+            if imports:
+                explanation_parts.append(f"Libraries: {', '.join(imports[:3])}")
+            if classes:
+                explanation_parts.append(f"Classes: {len(classes)}")
+            if functions:
+                explanation_parts.append(f"Functions: {len(functions)}")
+
+        elif ext in ('.js', '.ts', '.jsx', '.tsx'):
+            imports = [l.strip() for l in lines if 'import' in l or 'require(' in l]
+            functions = [l.strip() for l in lines if 'function ' in l or 'const ' in l and '=>' in l]
+            explanation_parts.append(f"JavaScript/TypeScript file hai. {total_lines} lines.")
+            if imports:
+                explanation_parts.append(f"Dependencies: {len(imports)} imports")
+            if functions:
+                explanation_parts.append(f"Functions: {len(functions)}")
+
+        elif ext in ('.html', '.htm'):
+            tags = self._extract_html_tags(content)
+            explanation_parts.append(f"HTML file hai. {total_lines} lines.")
+            if tags:
+                explanation_parts.append(f"Main tags: {', '.join(tags[:5])}")
+
+        elif ext == '.json':
+            try:
+                data = json.loads(content)
+                explanation_parts.append(f"JSON file hai. Top-level keys: {list(data.keys())[:5]}")
+            except Exception:
+                explanation_parts.append(f"JSON file hai but invalid format bhai.")
+
+        elif ext in ('.md', '.txt'):
+            words = len(content.split())
+            explanation_parts.append(f"Text file hai. {words} words, {total_lines} lines.")
+            first_line = lines[0].strip() if lines else ""
+            if first_line:
+                explanation_parts.append(f"Starts with: '{first_line[:50]}'")
+
+        elif ext in ('.yml', '.yaml'):
+            explanation_parts.append(f"YAML config file hai. {total_lines} lines.")
+
+        elif ext in ('.css', '.scss'):
+            selectors = len([l for l in lines if '{' in l])
+            explanation_parts.append(f"Stylesheet hai. {selectors} selectors, {total_lines} lines.")
+
+        else:
+            explanation_parts.append(f"File hai bhai. {total_lines} lines, {len(content)} characters.")
+            first_line = lines[0].strip() if lines else ""
+            if first_line:
+                explanation_parts.append(f"First line: '{first_line[:50]}'")
+
+        if context:
+            explanation_parts.append(f"\nContext '{context}' ke hisaab se relevant sections:")
+            relevant = self._find_relevant_sections(content, context)
+            for section in relevant[:2]:
+                explanation_parts.append(f"  - {section}")
+
+        return "\n".join(explanation_parts)
+
+    def _extract_html_tags(self, content: str) -> List[str]:
+        tags = set()
+        for match in re.finditer(r'<(\w+)', content):
+            tag = match.group(1).lower()
+            if tag not in ('div', 'span', 'p', 'a'):
+                tags.add(tag)
+        return list(tags)
+
+    def _find_relevant_sections(self, content: str, context: str) -> List[str]:
+        lines = content.split('\n')
+        relevant = []
+        context_lower = context.lower()
+        for i, line in enumerate(lines):
+            if context_lower in line.lower():
+                start = max(0, i - 1)
+                end = min(len(lines), i + 2)
+                section = ' '.join(lines[start:end]).strip()
+                if len(section) > 20:
+                    relevant.append(section[:100] + "..." if len(section) > 100 else section)
+        return relevant
+
+    def _make_relative(self, filepath: Path) -> str:
+        try:
+            for search_dir in self.search_dirs:
+                if search_dir in filepath.parents or filepath.is_relative_to(search_dir):
+                    return str(filepath.relative_to(search_dir))
+            return str(filepath)
+        except Exception:
+            return str(filepath)
+
+    def _get_file_icon(self, filepath: Path) -> str:
+        return self.file_icons.get(filepath.suffix.lower(), self.file_icons.get("default", "📄"))
 
     # ═══════════════════════════════════════════
     # SKILL: list_files
     # ═══════════════════════════════════════════
 
-    async def list_files(self, *args) -> str:
-        """
-        List files in a folder.
-        Trigger: [SKILL:list_files:folder_path]
-        Returns: Formatted directory listing.
-        """
-        folder_path = args[0] if args else str(self.workspace)
-
+    def list_files(self, *args) -> str:
         try:
-            target = Path(folder_path).expanduser().resolve()
-            if not target.is_absolute():
-                target = self.workspace / folder_path
+            folder = args[0] if args else "."
+            path = Path(folder).expanduser().resolve()
+            if not path.is_absolute():
+                path = self.search_dirs[0] / folder
+            if not path.exists():
+                return f"Folder nahi mila bhai: {folder}"
+            if not path.is_dir():
+                return f"Yeh folder nahi hai bhai: {folder}"
 
-            if not target.exists():
-                return f"Folder nahi mila sir: {folder_path}"
+            items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+            if not items:
+                return f"📁 {path.name} — folder khali hai bhai."
 
-            if not target.is_dir():
-                return f"Yeh folder nahi hai sir, file hai: {folder_path}"
-
-            # Get directory contents
-            items = []
-            dirs = []
-            files = []
-
-            for item in sorted(target.iterdir()):
-                if item.name.startswith('.') and item.name not in ('.gitignore', '.env'):
-                    continue
-
-                icon = self._get_file_icon(item)
-
-                if item.is_dir():
-                    # Count files inside
+            lines = [f"📁 {path.name}/ ({len([i for i in items if i.is_dir()])} folders, {len([i for i in items if i.is_file()])} files)"]
+            for item in items[:30]:
+                icon = self.file_icons.get("folder", "📁") if item.is_dir() else self._get_file_icon(item)
+                size = ""
+                if item.is_file():
                     try:
-                        count = sum(1 for _ in item.iterdir() if not _.name.startswith('.'))
-                        dirs.append(f"{icon} {item.name}/ ({count} items)")
-                    except PermissionError:
-                        dirs.append(f"{icon} {item.name}/")
-                else:
-                    size = self._format_file_size(item.stat().st_size)
-                    files.append(f"{icon} {item.name} ({size})")
+                        sz = item.stat().st_size
+                        size = f" ({sz:,} bytes)" if sz < 1024*1024 else f" ({sz/(1024*1024):.1f} MB)"
+                    except Exception:
+                        pass
+                lines.append(f"  {icon} {item.name}{size}")
 
-            # Build output
-            rel_path = target.relative_to(self.workspace) if self.workspace in target.parents else target
-            lines = [f"📂 {rel_path}/ — {len(dirs)} folders, {len(files)} files\n"]
-
-            if dirs:
-                lines.append("Folders:")
-                lines.extend(f"  {d}" for d in dirs[:15])
-                if len(dirs) > 15:
-                    lines.append(f"  ... aur {len(dirs) - 15} folders")
-                lines.append("")
-
-            if files:
-                lines.append("Files:")
-                lines.extend(f"  {f}" for f in files[:20])
-                if len(files) > 20:
-                    lines.append(f"  ... aur {len(files) - 20} files")
+            if len(items) > 30:
+                lines.append(f"  ... aur {len(items) - 30} items aur hain bhai")
 
             return "\n".join(lines)
 
-        except PermissionError:
-            return f"Permission denied sir: {folder_path}"
         except Exception as e:
             logger.error(f"list_files error: {e}")
-            return f"Files list karne mein error sir: {str(e)}"
+            return f"Files list karne mein error bhai: {str(e)}"
 
     # ═══════════════════════════════════════════
     # SKILL: read_file
     # ═══════════════════════════════════════════
 
-    async def read_file(self, *args) -> str:
-        """
-        Read file and return content.
-        Trigger: [SKILL:read_file:filepath]
-        Returns: File content.
-        """
-        if not args:
-            return "Kaunsi file read karni hai sir?"
-
-        filepath_str = args[0]
-
+    def read_file(self, *args) -> str:
         try:
+            if not args:
+                return "File path do bhai."
+            filepath_str = args[0]
             filepath = Path(filepath_str).expanduser().resolve()
             if not filepath.is_absolute():
-                filepath = self.code_dir / filepath_str
-                if not filepath.exists():
-                    filepath = self.workspace / filepath_str
-
+                filepath = self.search_dirs[0] / filepath_str
             if not filepath.exists():
-                return f"File nahi mila sir: {filepath_str}"
+                return f"File nahi mila bhai: {filepath_str}"
 
-            size_kb = filepath.stat().st_size / 1024
-            if size_kb > self.max_file_size_kb:
-                # Read first portion
-                content = filepath.read_text(encoding='utf-8', errors='replace')[:5000]
-                return f"⚠️ File bahut badi hai ({size_kb:.0f}KB). Pehla hissa:\n\n{content}\n\n... (truncated)"
+            content = self._read_file_safe(filepath)
+            lines = content.split('\n')
+            total_lines = len(lines)
+            icon = self._get_file_icon(filepath)
 
-            content = filepath.read_text(encoding='utf-8', errors='replace')
-            rel_path = filepath.relative_to(self.workspace) if self.workspace in filepath.parents else filepath
+            header = f"📄 {filepath.name} {icon} ({total_lines} lines, {len(content):,} chars)"
 
-            return f"📄 {rel_path} ({self._format_file_size(filepath.stat().st_size)}):\n\n{content}"
+            if total_lines > 100:
+                preview = '\n'.join(lines[:50])
+                return f"{header}\n\n{preview}\n\n... ({total_lines - 50} aur lines hain bhai, complete file read ke liye code review kar sakta hoon)"
+            else:
+                return f"{header}\n\n{content}"
 
         except Exception as e:
             logger.error(f"read_file error: {e}")
-            return f"File read karne mein error sir: {str(e)}"
+            return f"File padhne mein error bhai: {str(e)}"
 
     # ═══════════════════════════════════════════
     # SKILL: edit_file
     # ═══════════════════════════════════════════
 
-    async def edit_file(self, *args) -> str:
-        """
-        Edit specific content in a file.
-        Trigger: [SKILL:edit_file:filepath:old_text:new_text]
-        Returns: Confirmation.
-        """
-        if len(args) < 3:
-            return "Usage: edit_file:filepath:old_content:new_content sir."
-
-        filepath_str = args[0]
-        old_text = args[1]
-        new_text = args[2] if len(args) > 2 else ""
-
+    def edit_file(self, *args) -> str:
         try:
+            if len(args) < 3:
+                return "Usage: edit_file:filepath:old_text:new_text bhai."
+
+            filepath_str = args[0]
+            old_text = args[1]
+            new_text = args[2] if len(args) > 2 else ""
+
             filepath = Path(filepath_str).expanduser().resolve()
             if not filepath.is_absolute():
-                filepath = self.code_dir / filepath_str
-                if not filepath.exists():
-                    filepath = self.workspace / filepath_str
-
+                filepath = self.search_dirs[0] / filepath_str
             if not filepath.exists():
-                return f"File nahi mila sir: {filepath_str}"
+                return f"File nahi mila bhai: {filepath_str}"
 
-            content = filepath.read_text(encoding='utf-8')
-
+            content = filepath.read_text(encoding='utf-8', errors='replace')
             if old_text not in content:
-                return f"'{old_text}' file mein nahi mila sir. Check karo content."
+                return f"'{old_text[:30]}' text file mein nahi mila bhai."
 
-            # Backup
+            new_content = content.replace(old_text, new_text, 1)
             backup_path = filepath.with_suffix(filepath.suffix + '.backup')
             filepath.rename(backup_path)
-
-            # Edit
-            new_content = content.replace(old_text, new_text, 1)
             filepath.write_text(new_content, encoding='utf-8')
 
-            rel_path = filepath.relative_to(self.workspace) if self.workspace in filepath.parents else filepath
-            return f"✏️ {rel_path} edit ho gayi sir. Backup: {backup_path.name}"
+            return f"Edit ho gayi bhai. Backup: {backup_path.name}"
 
         except Exception as e:
             logger.error(f"edit_file error: {e}")
-            return f"File edit karne mein error sir: {str(e)}"
+            return f"File edit karne mein error bhai: {str(e)}"
 
     # ═══════════════════════════════════════════
     # SKILL: search_files
     # ═══════════════════════════════════════════
 
-    async def search_files(self, *args) -> str:
-        """
-        Full-text search across workspace.
-        Trigger: [SKILL:search_files:query]
-        Returns: Matching files with line previews.
-        """
-        if not args:
-            return "Kya search karna hai sir?"
+    def search_files(self, *args) -> str:
+        try:
+            query = " ".join(args).strip() if args else ""
+            if not query:
+                return "Kya search karna hai bhai?"
 
-        query = args[0].lower()
-        results = []
-        max_results = 10
-        max_line_preview = 80
-
-        # Search in workspace
-        search_paths = [self.workspace] + self.search_dirs
-        seen = set()
-
-        for search_dir in search_paths:
-            if not search_dir.exists():
-                continue
-
-            try:
-                for root, dirs, files in os.walk(search_dir):
-                    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in (
-                        'node_modules', '__pycache__', 'venv', '.git', 'dist', 'build'
-                    )]
-
-                    for file in files:
-                        if file.startswith('.'):
-                            continue
-                        if file.endswith(('.exe', '.dll', '.so', '.dylib', '.bin', '.dat')):
-                            continue
-
-                        file_path = Path(root) / file
-                        real_path = file_path.resolve()
-                        if real_path in seen:
-                            continue
-                        seen.add(real_path)
-
-                        # Skip very large files
-                        try:
-                            if file_path.stat().st_size > self.max_file_size_kb * 1024:
-                                continue
-                        except OSError:
-                            continue
-
-                        # Search in file
-                        try:
-                            content = file_path.read_text(encoding='utf-8', errors='replace')
-                            if query in content.lower():
-                                # Find matching lines
-                                lines = content.split('\n')
-                                matching_lines = []
-                                for i, line in enumerate(lines, 1):
-                                    if query in line.lower():
-                                        preview = line.strip()[:max_line_preview]
-                                        matching_lines.append(f"  L{i}: {preview}")
-                                        if len(matching_lines) >= 3:
-                                            break
-
-                                rel = file_path.relative_to(search_dir) if file_path.is_relative_to(search_dir) else file_path.name
-                                icon = self._get_file_icon(file_path)
-                                results.append({
-                                    'path': rel,
-                                    'icon': icon,
-                                    'lines': matching_lines,
-                                    'score': len(matching_lines),
-                                })
-
-                                if len(results) >= max_results:
-                                    break
-                        except (UnicodeDecodeError, PermissionError):
-                            continue
-
-                    if len(results) >= max_results:
+            results = []
+            for search_dir in self.search_dirs:
+                if not search_dir.exists():
+                    continue
+                try:
+                    for item in search_dir.rglob("*"):
+                        if item.is_file() and query.lower() in item.name.lower():
+                            results.append(item)
+                            if len(results) >= 20:
+                                break
+                        if item.is_file() and len(results) < 20:
+                            try:
+                                content = item.read_text(encoding='utf-8', errors='replace')
+                                if query.lower() in content.lower():
+                                    results.append(item)
+                            except Exception:
+                                pass
+                    if len(results) >= 20:
                         break
+                except PermissionError:
+                    continue
 
-            except Exception as e:
-                logger.warning(f"Search error in {search_dir}: {e}")
+            if not results:
+                return f"'{query}' ke liye kuch nahi mila bhai."
 
-        if not results:
-            return f"'{query}' ke liye koi results nahi mile sir."
+            lines = [f"🔍 {len(results)} results for '{query}':"]
+            for r in results[:10]:
+                rel = self._make_relative(r)
+                icon = self._get_file_icon(r)
+                lines.append(f"  {icon} {rel}")
+            if len(results) > 10:
+                lines.append(f"  ... aur {len(results) - 10} results hain bhai")
 
-        lines = [f"🔍 '{query}' ke liye {len(results)} files mile:\n"]
-        for r in results:
-            lines.append(f"{r['icon']} {r['path']}")
-            lines.extend(r['lines'])
-            lines.append("")
+            return "\n".join(lines)
 
-        return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"search_files error: {e}")
+            return f"Search mein error bhai: {str(e)}"
 
 
-# ═══════════════════════════════════════════
 # Singleton
-# ═══════════════════════════════════════════
-
 _file_manager: Optional[FileManager] = None
 
 

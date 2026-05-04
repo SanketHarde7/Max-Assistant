@@ -1,7 +1,6 @@
 """
-Memory Manager Module
-Handles persistent conversation history, context windowing, and auto-summarization.
-Thread-safe JSON persistence with user fact extraction.
+memory.py — JARVIS v4.0
+Added: Personality evolution tracking, auto fact extraction, buddy tone.
 """
 import json
 import os
@@ -13,14 +12,14 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-
 class MemoryManager:
     """
     Manages conversation memory with:
     - Context window (last N messages)
     - Auto-summarization when threshold exceeded
     - Persistent JSON storage
-    - User fact extraction
+    - User fact extraction & Permanent Rules
+    - Personality evolution profile
     """
     
     def __init__(self, memory_file: str, max_messages: int = 20, summarize_threshold: int = 20):
@@ -29,10 +28,8 @@ class MemoryManager:
         self.summarize_threshold = summarize_threshold
         self._lock = asyncio.Lock()
         
-        # Ensure data directory exists
         self.memory_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # Load or initialize memory
         self.memory = self._load_memory()
     
     def _load_memory(self) -> Dict:
@@ -65,6 +62,14 @@ class MemoryManager:
                 "location": "Maharashtra",
                 "preferences": {}
             },
+            "personality_profile": {
+                "prefers_short_answers": False,
+                "main_domain": "coding",
+                "language_mix": 0.7,
+                "humor_level": "medium",
+                "total_interactions": 0,
+                "last_greeting": ""
+            },
             "created_at": datetime.now().isoformat()
         }
     
@@ -94,6 +99,10 @@ class MemoryManager:
                     "content": content,
                     "timestamp": datetime.now().isoformat()
                 })
+                
+                # Update interaction count
+                self.memory.setdefault("personality_profile", {})["total_interactions"] = \
+                    self.memory["personality_profile"].get("total_interactions", 0) + 1
                 
                 # Check if summarization needed
                 if len(self.memory["messages"]) >= self.summarize_threshold:
@@ -135,8 +144,45 @@ class MemoryManager:
             return False
     
     def get_context(self) -> str:
-        """Build context string for LLM prompt."""
+        """Build context string for LLM prompt, injecting permanent rules first."""
         context_parts = []
+
+        # --- Inject Permanent Rules ---
+        rules_file = self.memory_file.parent / "permanent_rules.json"
+        if rules_file.exists():
+            try:
+                rules = json.loads(rules_file.read_text(encoding='utf-8'))
+                if rules:
+                    rules_text = "CRITICAL PERMANENT RULES YOU MUST ALWAYS FOLLOW:\n"
+                    for r in rules:
+                        rules_text += f"- {r['rule']}\n"
+                    context_parts.append(rules_text)
+            except Exception as e:
+                logger.warning(f"Could not load permanent rules: {e}")
+        
+        # --- Inject Personality Profile ---
+        profile = self.memory.get("personality_profile", {})
+        if profile:
+            parts = []
+            if profile.get("prefers_short_answers"):
+                parts.append("User prefers SHORT answers.")
+            domain = profile.get("main_domain")
+            if domain:
+                parts.append(f"User mainly asks about: {domain}")
+            lang_mix = profile.get("language_mix")
+            if lang_mix is not None:
+                parts.append(f"Language preference: {lang_mix * 100:.0f}% English, {100 - lang_mix * 100:.0f}% Hindi")
+            if parts:
+                context_parts.append("PERSONALITY PROFILE:\n" + "\n".join(parts))
+        
+        # --- User Facts ---
+        facts = self.memory.get("user_facts", {})
+        if facts:
+            fact_lines = [f"USER FACTS:"]
+            for k, v in facts.items():
+                if k != "preferences" and v:
+                    fact_lines.append(f"- {k}: {v}")
+            context_parts.append("\n".join(fact_lines))
         
         if self.memory.get("summary"):
             context_parts.append(f"PREVIOUS: {self.memory['summary']}")
@@ -148,12 +194,14 @@ class MemoryManager:
         return "\n".join(context_parts)
     
     async def clear_memory(self) -> bool:
-        """Reset conversation history (keep user facts)."""
+        """Reset conversation history (keep user facts and profile)."""
         try:
             async with self._lock:
                 user_facts = self.memory.get("user_facts", {})
+                profile = self.memory.get("personality_profile", {})
                 self.memory = self._fresh_memory()
                 self.memory["user_facts"] = user_facts
+                self.memory["personality_profile"] = profile
                 return self._save_to_disk()
         except Exception as e:
             logger.error(f"❌ Failed to clear memory: {e}")
@@ -171,10 +219,93 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"❌ Failed to update user fact: {e}")
             return False
+    
+    async def extract_and_store_facts(self, user_text: str) -> List[str]:
+        """
+        Simple pattern-based fact extraction.
+        e.g. 'Mera naam Sanket hai' -> name=Sanket
+        """
+        import re
+        facts_found = []
+        text_lower = user_text.lower()
+        
+        # Name patterns
+        name_patterns = [
+            r"mera naam (\w+) hai",
+            r"my name is (\w+)",
+            r"main (\w+) hoon",
+            r"call me (\w+)",
+        ]
+        for p in name_patterns:
+            m = re.search(p, text_lower)
+            if m:
+                name = m.group(1).title()
+                await self.update_user_fact("name", name)
+                facts_found.append(f"name={name}")
+                break
+        
+        # Location patterns
+        loc_patterns = [
+            r"main (\w+) mein rehta hoon",
+            r"main (\w+) mein rehti hoon",
+            r"i live in (\w+)",
+            r"i am from (\w+)",
+        ]
+        for p in loc_patterns:
+            m = re.search(p, text_lower)
+            if m:
+                loc = m.group(1).title()
+                await self.update_user_fact("location", loc)
+                facts_found.append(f"location={loc}")
+                break
+        
+        # Preference patterns
+        pref_patterns = [
+            (r"mujhe (\w+) pasand hai", "likes"),
+            (r"i love (\w+)", "likes"),
+            (r"i hate (\w+)", "dislikes"),
+            (r"mujhe (\w+) nahi pasand", "dislikes"),
+        ]
+        for p, category in pref_patterns:
+            m = re.search(p, text_lower)
+            if m:
+                item = m.group(1)
+                prefs = self.memory.get("user_facts", {}).get("preferences", {})
+                prefs.setdefault(category, []).append(item)
+                await self.update_user_fact("preferences", prefs)
+                facts_found.append(f"{category}={item}")
+        
+        return facts_found
+    
+    async def update_personality(self, response_length: int, skill_used: str = "") -> bool:
+        """Update personality profile based on interaction patterns."""
+        try:
+            async with self._lock:
+                profile = self.memory.setdefault("personality_profile", {})
+                interactions = profile.get("total_interactions", 0)
+                
+                # Track short answer preference
+                if interactions > 10:
+                    avg_len = sum(len(m.get("content", "")) for m in self.memory["messages"][-20:] if m["role"] == "assistant") / max(1, len([m for m in self.memory["messages"][-20:] if m["role"] == "assistant"]))
+                    profile["prefers_short_answers"] = avg_len < 150
+                
+                # Track domain
+                if skill_used:
+                    code_skills = {"write_code", "run_code", "code_review", "fix_code", "project_scaffold"}
+                    if skill_used in code_skills:
+                        profile["main_domain"] = "coding"
+                    elif skill_used in {"search", "weather", "youtube_search"}:
+                        profile["main_domain"] = "information"
+                    elif skill_used in {"open_app", "web_open", "volume", "brightness", "lock_pc"}:
+                        profile["main_domain"] = "pc_control"
+                
+                return self._save_to_disk()
+        except Exception as e:
+            logger.error(f"Personality update failed: {e}")
+            return False
 
 
 _memory_instance: Optional[MemoryManager] = None
-
 
 def get_memory_manager(config) -> MemoryManager:
     global _memory_instance

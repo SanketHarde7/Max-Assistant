@@ -1,661 +1,643 @@
 """
-JARVIS AI Assistant v3.0 — Enhanced Backend
-FastAPI + WebSocket with agent-level skills support.
-
-Pipeline: STT → Memory → LLM → Skills (Code/File/PC) → TTS
+main.py — JARVIS v4.0
+Backend: FastAPI + WebSocket + REST endpoints.
+Fixed: Adapted precisely for Frontend events (request_greeting, audio_response) and RAW Base64.
 """
+import os
+import sys
 import logging
 import base64
-import json
-import asyncio
-import traceback
+from pathlib import Path
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from typing import Optional, Dict, Any, List
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from contextlib import asynccontextmanager
+import uvicorn
+
+# ── Ensure project root in path ──
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import config
-from modules import stt, llm, tts
-from modules.memory import get_memory_manager
+from agent_core import get_agent
+from modules.stt import transcribe_audio, transcribe_file
+from modules.tts import generate_tts
+from modules.llm import get_greeting
 from modules.skills import get_skills_engine
-from modules.code_engine import get_code_engine
-from modules.file_manager import get_file_manager
-from modules.agent_core import get_agent_core
+from modules.memory import get_memory_manager
+from modules.email_agent import get_email_agent
+from modules.calendar_agent import get_calendar_agent
+from modules.browser_agent import get_browser_agent
+from modules.smarthome_agent import get_smarthome_agent
+from modules.plugin_loader import get_plugin_loader
 
-# ═══════════════════════════════════════════
-# Logging
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════
+# LOGGING
+# ═══════════════════════════════════════════════════
 
 logging.basicConfig(
-    level=logging.DEBUG if config.DEBUG else logging.INFO,
-    format="%(asctime)s | %(levelname)-5s | %(name)s | %(message)s"
+    level=logging.INFO if not config.DEBUG else logging.DEBUG,
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("JARVIS.CORE")
+logger = logging.getLogger("JARVIS.API")
 
-# ═══════════════════════════════════════════
-# Singleton Managers
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════
+# FASTAPI APP
+# ═══════════════════════════════════════════════════
 
-memory_manager = None
-skills_engine = None
-code_engine = None
-file_manager = None
-agent_core = None
-SEARCH_DATA_SKILLS = {"search", "weather"}  # These get 2nd LLM pass for summarization
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup/Shutdown lifecycle."""
-    global memory_manager, skills_engine, code_engine, file_manager, agent_core
-    logger.info("🚀 JARVIS v3.0 Initializing...")
-
-    try:
-        memory_manager = get_memory_manager(config)
-        logger.info(f"💾 Memory: {config.MEMORY_FILE}")
-
-        if config.SKILLS_ENABLED:
-            skills_engine = get_skills_engine(config)
-            logger.info(f"🔧 Skills: {len(skills_engine.skills_registry)} skills loaded")
-
-        code_engine = get_code_engine(config)
-        logger.info(f"💻 Code Engine: workspace={config.WORKSPACE_DIR}")
-
-        file_manager = get_file_manager(config)
-        logger.info(f"📁 File Manager: {len(config.SEARCH_DIRS)} search dirs")
-
-        agent_core = get_agent_core(config)
-        logger.info(f"🧠 Agent Core: planning enabled")
-
-    except Exception as e:
-        logger.error(f"❌ Startup failed: {e}")
-        logger.error(traceback.format_exc())
-        raise
-
-    yield
-    logger.info("🔌 JARVIS shutting down.")
-
-
-app = FastAPI(title="JARVIS AI Assistant", version="3.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="JARVIS API",
+    description="Sanket's AI Assistant Backend",
+    version="4.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ═══════════════════════════════════════════════════
+# PYDANTIC MODELS
+# ═══════════════════════════════════════════════════
 
-# ═══════════════════════════════════════════
-# Request Models
-# ═══════════════════════════════════════════
-
-class VoiceRequest(BaseModel):
-    audio: str  # base64
-
-class ChatRequest(BaseModel):
-    message: str
-    session_id: str = "default"
+class TextInput(BaseModel):
+    text: str
+    tts: bool = True
 
 class CodeRequest(BaseModel):
+    language: str = "python"
     description: str
-    language: str = "auto"
 
 class RunCodeRequest(BaseModel):
     filepath: str
 
-class ExplainRequest(BaseModel):
-    filename: str
-    context: str = ""
-
-class EditRequest(BaseModel):
+class ReviewCodeRequest(BaseModel):
     filepath: str
-    old_text: str
-    new_text: str
-
-
-# ═══════════════════════════════════════════
-# Response Builder
-# ═══════════════════════════════════════════
-
-async def _handle_skill_result(
-    user_text: str,
-    response_text: str,
-    skill_result: dict,
-    context: str
-) -> str:
-    """
-    Smart skill result handler.
-
-    - SEARCH/WEATHER skills → 2nd LLM pass → conversational summary
-    - Other DATA skills → truncated result appended
-    - ACTION skills → LLM response as-is (already says what it did)
-    """
-    if not skill_result.get("executed"):
-        return response_text
-
-    skill_name = skill_result.get("skill_name", "")
-    result_str = skill_result.get("result", "").strip()
-    tts_result = skill_result.get("tts_result", "").strip()
-    is_data = skill_result.get("is_data_skill", False)
-
-    if not is_data:
-        return response_text
-
-    if skill_name in SEARCH_DATA_SKILLS and result_str:
-        try:
-            summary = await llm.get_response_with_skill_result(
-                user_text=user_text,
-                skill_result_text=result_str,
-                memory_context=context
-            )
-            return summary["response"]
-        except Exception as e:
-            logger.warning(f"2nd LLM pass failed: {e}")
-            return f"{response_text} {tts_result}".strip()
-
-    if tts_result:
-        return f"{response_text} {tts_result}".strip()
-
-    return response_text
-
-
-
-# ═══════════════════════════════════════════
-# PIPELINES
-# ═══════════════════════════════════════════
-
-async def run_voice_pipeline(audio_bytes: bytes) -> dict:
-    """Full Voice: STT → Memory → LLM → Skills → TTS"""
-    global memory_manager, skills_engine, code_engine
-
-    # 1. STT
-    logger.info(f"🎙️ STT ({len(audio_bytes)} bytes)...")
-    transcript = await asyncio.wait_for(
-        stt.transcribe_audio(audio_bytes), timeout=30.0
-    )
-    if not transcript or not transcript.strip():
-        raise ValueError("Kuch sunai nahi diya sir. Saaf boliye.")
-    logger.info(f"✅ STT: '{transcript}'")
-
-    # 2. Memory
-    if memory_manager:
-        await asyncio.wait_for(
-            memory_manager.add_message("user", transcript), timeout=10.0
-        )
-
-    # 3. LLM
-    logger.info("🤖 LLM...")
-    context = memory_manager.get_context() if memory_manager else ""
-    llm_result = await asyncio.wait_for(
-        llm.get_response(transcript, memory_context=context), timeout=45.0
-    )
-    response_text = llm_result["response"]
-    logger.info(f"✅ LLM: '{response_text[:100]}'")
-
-    # 4. Skills
-    skill_name = None
-    skill_result = {"executed": False}
-
-    if skills_engine and llm_result.get("skill"):
-        raw_skill_tag = llm_result["skill"]
-        logger.info(f"⚙️ Skill: {raw_skill_tag}")
-        try:
-            skill_result = await skills_engine.parse_and_execute(raw_skill_tag)
-            if skill_result.get("executed"):
-                skill_name = skill_result.get("skill_name")
-                logger.info(f"✅ Skill: {skill_name} → {skill_result.get('result', '')[:80]}")
-                response_text = await _handle_skill_result(transcript, response_text, skill_result, context)
-
-                if memory_manager and skill_result.get("result"):
-                    await memory_manager.add_message(
-                        "system", f"[SKILL_RESULT:{skill_name}] {skill_result['result']}"
-                    )
-            else:
-                logger.warning(f"⚠️ Skill fail: {skill_result.get('error', 'unknown')}")
-        except Exception as skill_err:
-            logger.warning(f"⚠️ Skill error: {skill_err}")
-
-    # 5. Save response
-    if memory_manager:
-        await asyncio.wait_for(
-            memory_manager.add_message("assistant", response_text), timeout=10.0
-        )
-
-    # 6. TTS
-    logger.info("🔊 TTS...")
-    audio_data = await asyncio.wait_for(
-        tts.text_to_speech(response_text), timeout=30.0
-    )
-    audio_b64 = base64.b64encode(audio_data).decode("utf-8") if audio_data else ""
-    logger.info(f"✅ TTS: {len(audio_data)} bytes")
-
-    return {
-        "transcript": transcript,
-        "response": response_text,
-        "skill": skill_name,
-        "audio": audio_b64,
-    }
-
-
-async def run_text_pipeline(message: str) -> dict:
-    """Text-only: Memory → LLM → Skills → TTS"""
-    global memory_manager, skills_engine, code_engine
-
-    if memory_manager:
-        await memory_manager.add_message("user", message)
-
-    context = memory_manager.get_context() if memory_manager else ""
-    llm_result = await llm.get_response(message, memory_context=context)
-    response_text = llm_result["response"]
-
-    skill_name = None
-    skill_result = {"executed": False}
-
-    if skills_engine and llm_result.get("skill"):
-        try:
-            skill_result = await skills_engine.parse_and_execute(llm_result["skill"])
-            if skill_result.get("executed"):
-                skill_name = skill_result.get("skill_name")
-                response_text = await _handle_skill_result(message, response_text, skill_result, context)
-                if memory_manager and skill_result.get("result"):
-                    await memory_manager.add_message(
-                        "system", f"[SKILL_RESULT:{skill_name}] {skill_result['result']}"
-                    )
-        except Exception:
-            pass
-
-    if memory_manager:
-        await memory_manager.add_message("assistant", response_text)
-
-    audio_data = await tts.text_to_speech(response_text)
-    audio_b64 = base64.b64encode(audio_data).decode("utf-8") if audio_data else ""
-
-    return {
-        "response": response_text,
-        "skill": skill_name,
-        "audio": audio_b64,
-    }
-
-
-# ═══════════════════════════════════════════
-# REST ENDPOINTS
-# ═══════════════════════════════════════════
-
-@app.post("/api/voice")
-async def process_voice(request: VoiceRequest):
-    """Full voice pipeline."""
-    try:
-        audio_bytes = base64.b64decode(request.audio)
-        if len(audio_bytes) < 512:
-            raise HTTPException(status_code=400, detail="Audio too short")
-        result = await run_voice_pipeline(audio_bytes)
-        return {"status": "success", **result}
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Timeout")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Voice error: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/chat")
-async def text_chat(request: ChatRequest):
-    """Text chat with TTS."""
-    try:
-        result = await run_text_pipeline(request.message)
-        return {"status": "success", "session_id": request.session_id, **result}
-    except Exception as e:
-        logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/memory")
-async def get_memory():
-    if not memory_manager:
-        raise HTTPException(status_code=503, detail="Memory not initialized")
-    return {
-        "messages": memory_manager.memory.get("messages", []),
-        "summary": memory_manager.memory.get("summary", ""),
-        "user_facts": memory_manager.memory.get("user_facts", {}),
-    }
-
-
-@app.delete("/api/memory")
-async def clear_memory():
-    if not memory_manager:
-        raise HTTPException(status_code=503, detail="Memory not initialized")
-    success = await memory_manager.clear_memory()
-    return {"success": success}
-
-
-@app.get("/api/skills")
-async def list_skills():
-    if not skills_engine:
-        return {"skills": [], "enabled": False}
-    return {
-        "skills": list(skills_engine.skills_registry.keys()),
-        "enabled": True,
-        "count": len(skills_engine.skills_registry),
-    }
-
-
-@app.get("/api/status")
-async def health_check():
-    return {
-        "status": "ok",
-        "version": "3.0.0",
-        "model": config.LLM_MODEL,
-        "tts_voice": config.TTS_VOICE,
-        "memory": "initialized" if memory_manager else "pending",
-        "skills": len(skills_engine.skills_registry) if skills_engine else 0,
-        "workspace": str(config.WORKSPACE_DIR),
-        "code_dir": str(config.CODE_SAVE_DIR),
-    }
-
-
-# ═══════════════════════════════════════════
-# NEW v3.0 ENDPOINTS — Direct Skill Access
-# ═══════════════════════════════════════════
-
-@app.post("/api/code/write")
-async def write_code_endpoint(request: CodeRequest):
-    """Direct code generation endpoint."""
-    try:
-        if not code_engine:
-            raise HTTPException(status_code=503, detail="Code engine not ready")
-        result = await code_engine.write_code(request.language, request.description)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"write_code error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/code/run")
-async def run_code_endpoint(request: RunCodeRequest):
-    """Direct code execution endpoint."""
-    try:
-        if not code_engine:
-            raise HTTPException(status_code=503, detail="Code engine not ready")
-        result = await code_engine.run_code(request.filepath)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"run_code error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/code/review")
-async def code_review_endpoint(request: RunCodeRequest):
-    """Direct code review endpoint."""
-    try:
-        if not code_engine:
-            raise HTTPException(status_code=503, detail="Code engine not ready")
-        result = await code_engine.code_review(request.filepath)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"code_review error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/files/explain")
-async def explain_file_endpoint(request: ExplainRequest):
-    """Direct file explanation endpoint."""
-    try:
-        if not file_manager:
-            raise HTTPException(status_code=503, detail="File manager not ready")
-        result = await file_manager.find_and_explain(request.filename, request.context)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"explain error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/files/list")
-async def list_files_endpoint(folder: str = ""):
-    """Direct file listing endpoint."""
-    try:
-        if not file_manager:
-            raise HTTPException(status_code=503, detail="File manager not ready")
-        target = folder or str(config.WORKSPACE_DIR)
-        result = await file_manager.list_files(target)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"list_files error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/files/edit")
-async def edit_file_endpoint(request: EditRequest):
-    """Direct file edit endpoint."""
-    try:
-        if not file_manager:
-            raise HTTPException(status_code=503, detail="File manager not ready")
-        result = await file_manager.edit_file(request.filepath, request.old_text, request.new_text)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"edit_file error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/workspace")
-async def get_workspace_info():
-    """Get workspace configuration."""
-    return {
-        "workspace_dir": str(config.WORKSPACE_DIR),
-        "code_save_dir": str(config.CODE_SAVE_DIR),
-        "search_dirs": [str(d) for d in config.SEARCH_DIRS],
-        "max_file_size_kb": config.MAX_FILE_SIZE_KB,
-        "project_templates": list(config.PROJECT_TEMPLATES.keys()),
-        "code_languages": list(config.CODE_LANGUAGES.keys()),
-    }
-
-
-# ═══════════════════════════════════════════
-# AGENT ENDPOINTS (NEW v3.0)
-# ═══════════════════════════════════════════
-
-class AgentPlanRequest(BaseModel):
-    request: str
-
-class AgentLearnRequest(BaseModel):
-    original: str
-    correction: str
-
-@app.post("/api/agent/plan")
-async def agent_plan(request: AgentPlanRequest):
-    """Create task plan from user request."""
-    try:
-        if not agent_core:
-            raise HTTPException(status_code=503, detail="Agent core not ready")
-        plan = await agent_core.plan_and_execute(request.request)
-        return {"status": "success", "plan": plan.to_dict()}
-    except Exception as e:
-        logger.error(f"Agent plan error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/agent/learn")
-async def agent_learn(request: AgentLearnRequest):
-    """Teach JARVIS a correction."""
-    try:
-        if not agent_core:
-            raise HTTPException(status_code=503, detail="Agent core not ready")
-        agent_core.learn_correction(request.original, request.correction)
-        return {"status": "success", "message": "Correction learned sir."}
-    except Exception as e:
-        logger.error(f"Agent learn error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/agent/stats")
-async def agent_stats():
-    """Get agent learning statistics."""
-    try:
-        if not agent_core:
-            raise HTTPException(status_code=503, detail="Agent core not ready")
-        return {"status": "success", "stats": agent_core.get_task_stats()}
-    except Exception as e:
-        logger.error(f"Agent stats error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ═══════════════════════════════════════════
-# WEBSOCKET
-# ═══════════════════════════════════════════
+
+class FixCodeRequest(BaseModel):
+    filepath: str
+    issue: str
+
+class ProjectScaffoldRequest(BaseModel):
+    project_type: str
+    project_name: str
+
+class WeatherRequest(BaseModel):
+    city: str = "auto"
+
+class VolumeRequest(BaseModel):
+    action: str = "up"   # up, down, mute, set
+    value: int = 10
+
+class OpenAppRequest(BaseModel):
+    app_name: str
+
+class OpenUrlRequest(BaseModel):
+    url: str
+
+class WhatsAppRequest(BaseModel):
+    contact: str
+    message: str
+
+class TypeTextRequest(BaseModel):
+    text: str
+
+class TimerRequest(BaseModel):
+    seconds: int = 60
+    label: str = "Timer"
+
+class ShutdownRequest(BaseModel):
+    delay: int = 30
+
+class RestartRequest(BaseModel):
+    delay: int = 30
+
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+class CalendarAddRequest(BaseModel):
+    title: str
+    date: str   # YYYY-MM-DD
+    time: str = ""   # HH:MM
+
+class BrowserOpenRequest(BaseModel):
+    url: str
+
+class BrowserActionRequest(BaseModel):
+    selector: str
+    text: str = ""
+
+class BrowserScrapeRequest(BaseModel):
+    url: str
+    query: str
+
+class FanRequest(BaseModel):
+    action: str   # on, off, speed1-5, swing
+
+class LightRequest(BaseModel):
+    action: str   # on, off
+
+class ACRequest(BaseModel):
+    action: str   # on, off, temp
+    value: str = ""
+
+class BrightnessRequest(BaseModel):
+    action: str   # up, down, set
+    value: int = 10
+
+class ClipboardRequest(BaseModel):
+    action: str   # get, set
+    text: str = ""
+
+# ═══════════════════════════════════════════════════
+# WEBSOCKET — Real-time Voice/Text Chat
+# ═══════════════════════════════════════════════════
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    logger.info("🔌 WebSocket connected")
+    logger.info(f"Client connected: {websocket.client}")
 
-    async def send(event: str, **data):
+    agent = get_agent()
+    skills = get_skills_engine(config)
+
+    try:
+        # NOTE: Initial connection block removed.
+        # We now wait for frontend to explicitly send 'request_greeting'
+
+        while True:
+            msg = await websocket.receive_json()
+            msg_type = msg.get("type", "text")
+
+            # 1. HANDLE GREETING EXPLICITLY (Fixes Double Greeting)
+            if msg_type == "request_greeting":
+                greeting = await agent.get_greeting()
+                
+                # Send text first to update UI
+                await websocket.send_json({
+                    "event": "greeting",
+                    "text": greeting
+                })
+
+                # Generate TTS and send in separate event
+                tts_path = await generate_tts(greeting[:300])
+                if tts_path and os.path.exists(tts_path):
+                    try:
+                        with open(tts_path, "rb") as f:
+                            # Send RAW base64, frontend appends 'data:'
+                            encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                            await websocket.send_json({
+                                "event": "audio_response",
+                                "audio": encoded_audio
+                            })
+                    except Exception as e:
+                        logger.error(f"Greeting TTS error: {e}")
+
+            # 2. HANDLE TEXT INPUT
+            elif msg_type == "text":
+                user_text = msg.get("message", msg.get("text", "")).strip()
+                if not user_text:
+                    continue
+                
+                logger.info(f"User Text: {user_text}")
+
+                result = await agent.process_text_input(user_text, use_tts=True)
+                
+                # Send text response first
+                await websocket.send_json({
+                    "event": "response_text",
+                    "text": result.get("response", ""),
+                    "skill_used": result.get("skill_used"),
+                })
+
+                # Send audio in dedicated audio_response event (Fixes Voice Playback)
+                tts_path = result.get("tts_path", "")
+                if tts_path and os.path.exists(tts_path):
+                    try:
+                        with open(tts_path, "rb") as f:
+                            encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                            await websocket.send_json({
+                                "event": "audio_response",
+                                "audio": encoded_audio
+                            })
+                    except Exception as e:
+                        logger.error(f"Text TTS Read Error: {e}")
+
+            # 3. HANDLE VOICE INPUT
+            elif msg_type == "voice" or msg_type == "audio":
+                # Frontend sends audio as base64 in 'audio' or 'data' key
+                audio_data = msg.get("audio", msg.get("data", ""))
+                if not audio_data:
+                    continue
+                
+                from modules.stt import transcribe_audio
+                transcript = await transcribe_audio(audio_data)
+                logger.info(f"STT: {transcript}")
+
+                # Send transcript to UI immediately
+                await websocket.send_json({
+                    "event": "transcript",
+                    "text": transcript
+                })
+
+                result = await agent.process_text_input(transcript, use_tts=True)
+                
+                # Send text response
+                await websocket.send_json({
+                    "event": "response_text",
+                    "text": result.get("response", ""),
+                    "skill_used": result.get("skill_used"),
+                })
+
+                # Send audio response
+                tts_path = result.get("tts_path", "")
+                if tts_path and os.path.exists(tts_path):
+                    try:
+                        with open(tts_path, "rb") as f:
+                            encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                            await websocket.send_json({
+                                "event": "audio_response",
+                                "audio": encoded_audio
+                            })
+                    except Exception as e:
+                        logger.error(f"Voice TTS Read Error: {e}")
+
+            # 4. KEEPALIVE / PING
+            elif msg_type == "ping":
+                await websocket.send_json({"event": "pong"})
+                
+            # 5. CLEAR MEMORY
+            elif msg_type == "clear_memory":
+                msg_resp = await agent.clear_memory()
+                await websocket.send_json({"type": "system", "text": msg_resp})
+                
+            # 6. ABORT / KILL SWITCH
+            elif msg_type == "abort":
+                logger.info("🛑 Client sent abort signal")
+
+    except WebSocketDisconnect:
+        logger.info("Client disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
         try:
-            await websocket.send_json({"event": event, **data})
+            await websocket.send_json({"event": "error", "message": f"Backend Error: {str(e)}"})
         except Exception:
             pass
 
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                await send("error", message="Invalid JSON")
-                continue
+# ═══════════════════════════════════════════════════
+# HEALTH & SYSTEM
+# ═══════════════════════════════════════════════════
 
-            msg_type = data.get("type", "")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "4.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "features": {
+            "voice": True,
+            "vision": True,
+            "code": True,
+            "files": True,
+            "email": get_email_agent().is_enabled(),
+            "calendar": True,
+            "browser": True,
+            "smarthome": config.IR_BLASTER_ENABLED,
+            "plugins": True,
+            "clipboard": True,
+            "brightness": True,
+            "lock": True,
+        },
+        "llm_model": config.LLM_MODEL,
+        "tts_voice": config.TTS_VOICE,
+    }
 
-            if msg_type == "request_greeting":
-                try:
-                    greeting = await llm.get_greeting()
-                    audio = await tts.text_to_speech(greeting)
-                    audio_b64 = base64.b64encode(audio).decode() if audio else ""
-                    await send("response_text", text=greeting)
-                    await send("status_update", state="speaking")
-                    if audio_b64:
-                        await send("audio_response", audio=audio_b64)
-                except Exception as e:
-                    logger.warning(f"Greeting failed: {e}")
-                continue
+# ═══════════════════════════════════════════════════
+# TTS / STT
+# ═══════════════════════════════════════════════════
 
-            if msg_type == "ping":
-                await send("pong")
-                continue
+@app.post("/api/speak")
+async def speak(request: TextInput):
+    tts_path = await generate_tts(request.text[:300])
+    if tts_path and os.path.exists(tts_path):
+        with open(tts_path, "rb") as f:
+            # RAW Base64 ONLY
+            return {"audio": base64.b64encode(f.read()).decode('utf-8'), "text": request.text}
+    return {"error": "TTS generation failed bhai."}
 
-            if msg_type == "voice":
-                audio_b64 = data.get("audio", "")
-                if not audio_b64:
-                    await send("error", message="No audio data")
-                    continue
-                try:
-                    await send("status_update", state="thinking")
-                    audio_bytes = base64.b64decode(audio_b64)
-                    if len(audio_bytes) < 512:
-                        await send("error", message="Audio too short")
-                        await send("status_update", state="idle")
-                        continue
+@app.post("/api/listen")
+async def listen(audio_path: str = ""):
+    if not audio_path:
+        return {"error": "Audio file path do bhai."}
+    transcript = await transcribe_file(audio_path)
+    return {"transcript": transcript}
 
-                    result = await run_voice_pipeline(audio_bytes)
-                    await send("transcript", text=result["transcript"])
-                    await send("response_text", text=result["response"])
-                    if result.get("skill"):
-                        await send("skill_event", skill=result["skill"])
-                    await send("status_update", state="speaking")
-                    if result.get("audio"):
-                        await send("audio_response", audio=result["audio"])
-                except asyncio.TimeoutError:
-                    await send("error", message="Timeout")
-                    await send("status_update", state="idle")
-                except Exception as e:
-                    logger.error(f"WS voice error: {e}")
-                    await send("error", message=str(e))
-                    await send("status_update", state="idle")
+# ═══════════════════════════════════════════════════
+# FILE MANAGEMENT
+# ═══════════════════════════════════════════════════
 
-            elif msg_type == "text":
-                message = data.get("message", "").strip()
-                if not message:
-                    await send("error", message="Empty message")
-                    continue
-                try:
-                    await send("status_update", state="thinking")
-                    result = await run_text_pipeline(message)
-                    await send("response_text", text=result["response"])
-                    if result.get("skill"):
-                        await send("skill_event", skill=result["skill"])
-                    await send("status_update", state="speaking")
-                    if result.get("audio"):
-                        await send("audio_response", audio=result["audio"])
-                except Exception as e:
-                    logger.error(f"WS text error: {e}")
-                    await send("error", message=str(e))
-                    await send("status_update", state="idle")
+@app.get("/api/files/search")
+async def search_files(query: str = Query(...)):
+    skills = get_skills_engine(config)
+    result = skills._skill_search_files(query)
+    return {"result": result}
 
-            elif msg_type == "code_write":
-                description = data.get("description", "")
-                language = data.get("language", "auto")
-                if not description:
-                    await send("error", message="No description")
-                    continue
-                try:
-                    await send("status_update", state="thinking")
-                    result = await code_engine.write_code(language, description)
-                    await send("skill_event", skill="write_code", data=result)
-                    await send("status_update", state="idle")
-                except Exception as e:
-                    await send("error", message=str(e))
-                    await send("status_update", state="idle")
+@app.get("/api/files/list")
+async def list_files(folder: str = Query(".")):
+    skills = get_skills_engine(config)
+    result = skills._skill_list_files(folder)
+    return {"result": result}
 
-            elif msg_type == "code_run":
-                filepath = data.get("filepath", "")
-                if not filepath:
-                    await send("error", message="No filepath")
-                    continue
-                try:
-                    await send("status_update", state="thinking")
-                    result = await code_engine.run_code(filepath)
-                    await send("skill_event", skill="run_code", data=result)
-                    await send("status_update", state="idle")
-                except Exception as e:
-                    await send("error", message=str(e))
-                    await send("status_update", state="idle")
+@app.get("/api/files/read")
+async def read_file(filepath: str = Query(...)):
+    skills = get_skills_engine(config)
+    result = skills._skill_read_file(filepath)
+    return {"result": result}
 
-            elif msg_type == "file_explain":
-                filename = data.get("filename", "")
-                context = data.get("context", "")
-                if not filename:
-                    await send("error", message="No filename")
-                    continue
-                try:
-                    await send("status_update", state="thinking")
-                    result = await file_manager.find_and_explain(filename, context)
-                    await send("skill_event", skill="find_and_explain", data=result)
-                    await send("status_update", state="idle")
-                except Exception as e:
-                    await send("error", message=str(e))
-                    await send("status_update", state="idle")
+# ═══════════════════════════════════════════════════
+# SCREEN / VISION
+# ═══════════════════════════════════════════════════
 
-            elif msg_type == "list_files":
-                folder = data.get("folder", "")
-                try:
-                    await send("status_update", state="thinking")
-                    result = await file_manager.list_files(folder)
-                    await send("skill_event", skill="list_files", data=result)
-                    await send("status_update", state="idle")
-                except Exception as e:
-                    await send("error", message=str(e))
-                    await send("status_update", state="idle")
+@app.post("/api/screenshot")
+async def screenshot(filename: str = ""):
+    skills = get_skills_engine(config)
+    result = skills._skill_screenshot(filename)
+    return {"result": result}
 
-            else:
-                await send("error", message=f"Unknown type: {msg_type}")
+@app.post("/api/screen/read")
+async def read_screen(window: str = ""):
+    skills = get_skills_engine(config)
+    result = await skills._skill_read_screen(window)
+    return {"result": result}
 
-    except WebSocketDisconnect:
-        logger.info("🔌 WebSocket disconnected")
-    except Exception as e:
-        logger.error(f"WS fatal: {e}")
+# ═══════════════════════════════════════════════════
+# PC CONTROL
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/volume")
+async def volume(request: VolumeRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_volume_control(request.action, str(request.value))
+    return {"result": result}
+
+@app.post("/api/open-app")
+async def open_app(request: OpenAppRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_open_app(request.app_name)
+    return {"result": result}
+
+@app.post("/api/open-url")
+async def open_url(request: OpenUrlRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_web_open(request.url)
+    return {"result": result}
+
+@app.post("/api/whatsapp")
+async def whatsapp(request: WhatsAppRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_whatsapp_message(request.contact, request.message)
+    return {"result": result}
+
+@app.post("/api/type-text")
+async def type_text(request: TypeTextRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_type_text(request.text)
+    return {"result": result}
+
+@app.post("/api/timer")
+async def timer(request: TimerRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_timer(str(request.seconds), request.label)
+    return {"result": result}
+
+@app.get("/api/weather")
+async def weather(city: str = Query("auto")):
+    skills = get_skills_engine(config)
+    result = skills._skill_weather(city)
+    return {"result": result}
+
+@app.post("/api/shutdown")
+async def shutdown(request: ShutdownRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_system_shutdown(str(request.delay))
+    return {"result": result}
+
+@app.post("/api/restart")
+async def restart(request: RestartRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_system_restart(str(request.delay))
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# CODE ENDPOINTS
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/generate-code")
+async def generate_code(request: CodeRequest):
+    skills = get_skills_engine(config)
+    result = await skills._skill_write_code(request.language, request.description)
+    return {"result": result}
+
+@app.post("/api/run-code")
+async def run_code(request: RunCodeRequest):
+    skills = get_skills_engine(config)
+    result = await skills._skill_run_code(request.filepath)
+    return {"result": result}
+
+@app.post("/api/review-code")
+async def review_code(request: ReviewCodeRequest):
+    skills = get_skills_engine(config)
+    result = await skills._skill_code_review(request.filepath)
+    return {"result": result}
+
+@app.post("/api/fix-code")
+async def fix_code(request: FixCodeRequest):
+    skills = get_skills_engine(config)
+    result = await skills._skill_fix_code(request.filepath, request.issue)
+    return {"result": result}
+
+@app.post("/api/project-scaffold")
+async def project_scaffold(request: ProjectScaffoldRequest):
+    skills = get_skills_engine(config)
+    result = await skills._skill_project_scaffold(request.project_type, request.project_name)
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# EMAIL ENDPOINTS
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/email/send")
+async def email_send(request: EmailSendRequest):
+    agent = get_email_agent()
+    result = agent.send_email(request.to, request.subject, request.body)
+    return {"result": result}
+
+@app.get("/api/email/check")
+async def email_check():
+    agent = get_email_agent()
+    result = agent.check_emails()
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# CALENDAR ENDPOINTS
+# ═══════════════════════════════════════════════════
+
+@app.get("/api/calendar/today")
+async def calendar_today():
+    agent = get_calendar_agent()
+    result = agent.today()
+    return {"result": result}
+
+@app.get("/api/calendar/week")
+async def calendar_week():
+    agent = get_calendar_agent()
+    result = agent.week()
+    return {"result": result}
+
+@app.post("/api/calendar/add")
+async def calendar_add(request: CalendarAddRequest):
+    agent = get_calendar_agent()
+    result = agent.add_event(request.title, request.date, request.time)
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# BROWSER ENDPOINTS
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/browser/open")
+async def browser_open(request: BrowserOpenRequest):
+    agent = get_browser_agent()
+    result = agent.open_url(request.url)
+    return {"result": result}
+
+@app.post("/api/browser/click")
+async def browser_click(request: BrowserActionRequest):
+    agent = get_browser_agent()
+    result = agent.click(request.selector)
+    return {"result": result}
+
+@app.post("/api/browser/type")
+async def browser_type(request: BrowserActionRequest):
+    agent = get_browser_agent()
+    result = agent.type_text(request.selector, request.text)
+    return {"result": result}
+
+@app.post("/api/browser/scrape")
+async def browser_scrape(request: BrowserScrapeRequest):
+    agent = get_browser_agent()
+    result = agent.scrape(request.url, request.query)
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# SMART HOME ENDPOINTS
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/smarthome/fan")
+async def smarthome_fan(request: FanRequest):
+    agent = get_smarthome_agent()
+    result = agent.fan_control(request.action)
+    return {"result": result}
+
+@app.post("/api/smarthome/light")
+async def smarthome_light(request: LightRequest):
+    agent = get_smarthome_agent()
+    result = agent.light_control(request.action)
+    return {"result": result}
+
+@app.post("/api/smarthome/ac")
+async def smarthome_ac(request: ACRequest):
+    agent = get_smarthome_agent()
+    result = agent.ac_control(request.action, request.value)
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# PC CONTROL — NEW
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/pc/brightness")
+async def pc_brightness(request: BrightnessRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_brightness(request.action, str(request.value))
+    return {"result": result}
+
+@app.post("/api/pc/clipboard")
+async def pc_clipboard(request: ClipboardRequest):
+    skills = get_skills_engine(config)
+    result = skills._skill_clipboard(request.action, request.text)
+    return {"result": result}
+
+@app.post("/api/pc/lock")
+async def pc_lock():
+    skills = get_skills_engine(config)
+    result = skills._skill_lock_pc()
+    return {"result": result}
+
+# ═══════════════════════════════════════════════════
+# PLUGIN ENDPOINTS
+# ═══════════════════════════════════════════════════
+
+@app.get("/api/plugins/list")
+async def plugins_list():
+    loader = get_plugin_loader()
+    result = loader.list_plugins()
+    return {"result": result}
+
+@app.post("/api/plugins/reload")
+async def plugins_reload():
+    loader = get_plugin_loader()
+    loader.reload()
+    skills = get_skills_engine(config)
+    skills.skills_registry = skills._register_skills()
+    return {"result": "Plugins reload ho gaye bhai."}
+
+# ═══════════════════════════════════════════════════
+# TEXT CHAT (non-WebSocket fallback)
+# ═══════════════════════════════════════════════════
+
+@app.post("/api/chat")
+async def chat(request: TextInput):
+    agent = get_agent()
+    # Handle 'message' or 'text' gracefully for REST fallback
+    result = await agent.process_text_input(request.text, use_tts=request.tts)
+    
+    response_data = {
+        "response": result.get("response", ""),
+        "skill_used": result.get("skill_used"),
+    }
+    
+    tts_path = result.get("tts_path", "")
+    if tts_path and os.path.exists(tts_path):
+        try:
+            with open(tts_path, "rb") as f:
+                # RAW Base64 ONLY
+                response_data["audio"] = base64.b64encode(f.read()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Chat REST TTS Read Error: {e}")
+
+    return response_data
+
+# ═══════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    logger.info(f"🚀 JARVIS v4.0 starting on {config.HOST}:{config.PORT}")
+    logger.info(f"   LLM: {config.LLM_MODEL}")
+    logger.info(f"   TTS: {config.TTS_VOICE}")
+    logger.info(f"   Skills: {len(get_skills_engine(config).skills_registry)} registered")
+
+    uvicorn.run(
+        "main:app",
+        host=config.HOST,
+        port=config.PORT,
+        reload=config.DEBUG,
+        log_level="info" if not config.DEBUG else "debug",
+    )
