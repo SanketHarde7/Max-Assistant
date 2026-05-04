@@ -28,7 +28,19 @@ async def generate_tts(text: str, voice: str = "", output_path: str = "") -> str
         tmp.close()
 
     try:
-        tts = edge_tts.Communicate(text=text, voice=voice)
+        try:
+            tts = edge_tts.Communicate(
+                text=text,
+                voice=voice,
+                rate=config.TTS_RATE,
+                pitch=config.TTS_PITCH,
+            )
+        except TypeError:
+            logger.warning(
+                "Installed edge_tts version does not support rate/pitch kwargs; "
+                "falling back to default voice settings."
+            )
+            tts = edge_tts.Communicate(text=text, voice=voice)
         await tts.save(output_path)
         return output_path
     except Exception as e:
