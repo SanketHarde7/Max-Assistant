@@ -41,6 +41,12 @@ async def generate_tts(text: str, voice: str = "", output_path: str = "") -> str
                 "falling back to default voice settings."
             )
             tts = edge_tts.Communicate(text=text, voice=voice)
+        tts = edge_tts.Communicate(
+            text=text,
+            voice=voice,
+            rate=config.TTS_RATE,
+            pitch=config.TTS_PITCH,
+        )
         await tts.save(output_path)
         return output_path
     except Exception as e:
