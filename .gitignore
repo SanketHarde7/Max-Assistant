@@ -27,6 +27,7 @@ MANIFEST
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 env.bak/
@@ -73,6 +74,8 @@ secrets/
 # ═══════════════════════════════════════════
 # DATA & LOGS
 # ═══════════════════════════════════════════
+backend/data/
+backend/backend/data/
 backend/data/memory.json
 backend/data/jarvis_config.json
 *.log

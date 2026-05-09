@@ -70,6 +70,9 @@ class TextInput(BaseModel):
     text: str
     tts: bool = True
 
+class VoiceRequest(BaseModel):
+    audio: str
+
 class CodeRequest(BaseModel):
     language: str = "python"
     description: str
@@ -339,6 +342,28 @@ async def listen(audio_path: str = ""):
         return {"error": "Audio file path do bhai."}
     transcript = await transcribe_file(audio_path)
     return {"transcript": transcript}
+
+@app.post("/api/voice")
+async def voice(request: VoiceRequest):
+    agent = get_agent()
+    transcript = await transcribe_audio(request.audio)
+    result = await agent.process_text_input(transcript, use_tts=True)
+
+    response_data = {
+        "transcript": transcript,
+        "response": result.get("response", ""),
+        "skill_used": result.get("skill_used"),
+    }
+
+    tts_path = result.get("tts_path", "")
+    if tts_path and os.path.exists(tts_path):
+        try:
+            with open(tts_path, "rb") as f:
+                response_data["audio"] = base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Voice TTS Read Error: {e}")
+
+    return response_data
 
 # ═══════════════════════════════════════════════════
 # FILE MANAGEMENT

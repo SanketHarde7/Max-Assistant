@@ -289,13 +289,13 @@ class SkillsEngine:
                 r = c.get(url, headers={"User-Agent": "curl/7.68.0"})
                 return r.text.strip() if r.status_code == 200 else f"Weather unavailable for {city}."
         except Exception:
-            return "Weather server se connect nahi ho paya bhai."
+            return "Weather server se connect nahi ho paya boss."
 
     def _skill_web_search(self, *args) -> str:
         import httpx
         query = " ".join(args).strip()
         if not query:
-            return "Kya search karna hai bhai?"
+            return "Kya search karna hai boss?"
 
         # ── Google News RSS — best for news/sports/current events ──
         try:
@@ -332,34 +332,34 @@ class SkillsEngine:
 
         # ── Last resort: open browser ──
         webbrowser.open(f"https://duckduckgo.com/?q={query.replace(' ', '+')}")
-        return f"Browser mein search khola bhai '{query}' ke liye."
+        return f"Browser mein search khola boss '{query}' ke liye."
 
     def _skill_youtube_search(self, *args) -> str:
         query = " ".join(args).strip()
         if not query:
-            return "Kya search karna hai bhai YouTube pe?"
+            return "Kya search karna hai boss YouTube pe?"
         webbrowser.open(f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}")
-        return f"YouTube search khola bhai."
+        return f"YouTube search khola boss."
 
     def _skill_clear_memory(self) -> str:
-        return "Memory clear ho gayi bhai."
+        return "Memory clear ho gayi boss."
 
     def _skill_add_rule(self, *args) -> str:
         import json
         text = " ".join(args).strip()
         if not text:
-            return "Rule text missing hai bhai."
+            return "Rule text missing hai boss."
         path = Path(self.config.DATA_DIR) / "permanent_rules.json"
         rules = json.loads(path.read_text()) if path.exists() else []
         rules.append({"rule": text, "timestamp": datetime.now().isoformat()})
         path.write_text(json.dumps(rules, indent=2))
-        return f"Rule save ho gayi bhai."
+        return f"Rule save ho gayi boss."
 
     def _skill_timer(self, seconds: str = "60", label: str = "Timer") -> str:
         try:
             secs = int(seconds)
             if secs <= 0:
-                return "Positive duration chahiye bhai."
+                return "Positive duration chahiye boss."
 
             def _countdown():
                 time.sleep(secs)
@@ -393,15 +393,15 @@ class SkillsEngine:
         try:
             text = " ".join(args).strip()
             if not text:
-                return "Kuch likhna toh chahiye bhai note mein."
+                return "Kuch likhna toh chahiye boss note mein."
             notes_file = Path(self.config.DATA_DIR) / "notes.txt"
             notes_file.parent.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
             with open(notes_file, 'a', encoding='utf-8') as f:
                 f.write(f"[{ts}] {text}\n")
-            return "Note save ho gayi bhai."
+            return "Note save ho gayi boss."
         except Exception as e:
-            return f"Note save nahi ho payi: {e}"
+            return f"sorry boss ,Note save nahi ho payi: {e}"
 
     # ═══════════════════════════════════════════
     # SCREEN / VISION SKILLS
@@ -439,7 +439,7 @@ class SkillsEngine:
             return await analyze_image_with_prompt(str(debug_path), prompt)
 
         except ImportError:
-            return "Screen read ke liye pyautogui install karo bhai."
+            return "Screen read ke liye pyautogui install karo boss."
         except Exception as e:
             return f"Screen read failed: {e}"
 
@@ -448,14 +448,14 @@ class SkillsEngine:
             import pygetwindow as gw
             titles = [t for t in gw.getAllTitles() if t.strip()]
             if not titles:
-                return "Koi active window nahi mili bhai."
+                return "Koi active window nahi mili boss."
             return "Open windows: " + ", ".join(titles[:10])
         except ImportError:
-            return "pygetwindow install karo bhai: pip install pygetwindow"
+            return "pygetwindow install karo boss: pip install pygetwindow"
 
     def _skill_screenshot(self, filename: str = "", **kwargs) -> str:
         if not PYAUTOGUI_AVAILABLE:
-            return "Screenshot ke liye pyautogui install karo bhai."
+            return "Screenshot ke liye pyautogui install nahi hai sir ."
         try:
             save_dir = Path(self.config.DATA_DIR) / "screenshots"
             save_dir.mkdir(parents=True, exist_ok=True)
@@ -473,7 +473,7 @@ class SkillsEngine:
 
     def _skill_open_app(self, app_name: str = "", **kwargs) -> str:
         if not app_name:
-            return "Kaunsa app kholna hai bhai?"
+            return "Kaunsa app kholna hai boss?"
         system = platform.system()
         app_lower = app_name.lower().strip()
         win_map = getattr(self.config, 'WINDOWS_APP_MAP', {})
@@ -484,19 +484,19 @@ class SkillsEngine:
             if system == "Windows":
                 cmd = win_map.get(app_lower, app_lower)
                 subprocess.Popen(cmd, shell=True)
-                return f"{app_name} khol diya bhai."
+                return f"{app_name} khol diya boss."
             elif system == "Darwin":
                 subprocess.run(["open", "-a", mac_map.get(app_lower, app_name)], check=True)
-                return f"{app_name} khol diya bhai."
+                return f"{app_name} khol diya boss."
             else:
                 subprocess.Popen([app_lower])
-                return f"{app_name} khol diya bhai."
+                return f"{app_name} khol diya boss."
         except Exception:
             logger.warning(f"Local open failed: '{app_name}'")
 
         fallback = web_map.get(app_lower, f"https://www.{app_lower.replace(' ','')}.com")
         webbrowser.open(fallback)
-        return f"{app_name} locally nahi mila. Browser mein khola bhai."
+        return f"{app_name} locally nahi mila. Browser mein khola boss."
 
     def _skill_web_open(self, url: str = "", **kwargs) -> str:
         if not url:
@@ -505,7 +505,7 @@ class SkillsEngine:
             url = "https://" + url
         try:
             webbrowser.open(url)
-            return f"Browser mein khola bhai."
+            return f"Browser mein khola boss."
         except Exception as e:
             return f"URL nahi khul paya: {e}"
 
@@ -538,10 +538,10 @@ class SkillsEngine:
                     subprocess.run(["osascript", "-e", "set volume output muted true"])
                 else:
                     subprocess.run(["osascript", "-e", f"set volume output volume {max(0,min(100,int(value)))}"])
-                return "Volume adjust kar diya bhai."
+                return "Volume adjust kar diya boss."
             else:
                 subprocess.run(["amixer", "-D", "pulse", "sset", "Master", f"{value}%"])
-                return f"Volume {value}% bhai."
+                return f"Volume {value}% boss."
         except Exception as e:
             return f"Volume control failed: {e}"
 
@@ -549,15 +549,15 @@ class SkillsEngine:
         if not PYWHATKIT_AVAILABLE:
             return "WhatsApp ke liye: pip install pywhatkit"
         if not contact:
-            return "Contact number do bhai (+91 format)."
+            return "Contact number do boss (+91 format)."
         if not message:
-            return "Message kya bhejna hai bhai?"
+            return "Message kya bhejna hai boss?"
         if not contact.startswith("+"):
             contact = "+" + contact
         try:
             pywhatkit.sendwhatmsg_instantly(phone_no=contact, message=message,
                                             wait_time=15, tab_close=True, close_time=3)
-            return "WhatsApp message bhej diya bhai."
+            return "WhatsApp message bhej diya boss."
         except Exception as e:
             return f"WhatsApp failed: {e}"
 
@@ -566,11 +566,11 @@ class SkillsEngine:
             return "Typing ke liye: pip install pyautogui"
         text = " ".join(args).strip()
         if not text:
-            return "Kya type karu bhai?"
+            return "Kya type karu boss?"
         try:
             time.sleep(1.5)
             pyautogui.write(text, interval=0.04)
-            return "Type kar diya bhai."
+            return "Type kar diya boss."
         except Exception as e:
             return f"Typing failed: {e}"
 
@@ -581,7 +581,7 @@ class SkillsEngine:
                 subprocess.run(["shutdown", "/s", "/t", str(secs)], check=True)
             else:
                 subprocess.run(["sudo", "shutdown", "-h", f"+{max(1,secs//60)}"], check=True)
-            return f"System {secs}s mein shutdown hoga bhai. Save kar lo."
+            return f"System {secs}s mein shutdown hoga boss. Save kar lo."
         except Exception as e:
             return f"Shutdown failed: {e}"
 
@@ -592,13 +592,13 @@ class SkillsEngine:
                 subprocess.run(["shutdown", "/r", "/t", str(secs)], check=True)
             else:
                 subprocess.run(["sudo", "shutdown", "-r", f"+{max(1,secs//60)}"], check=True)
-            return f"System {secs}s mein restart hoga bhai."
+            return f"System {secs}s mein restart hoga boss."
         except Exception as e:
             return f"Restart failed: {e}"
 
     # ═══════════════════════════════════════════
     # NEW PC CONTROL SKILLS
-    # ═══════════════════════════════════════════
+    # ══════════════════════════════════════════
 
     def _skill_brightness(self, action: str = "up", value: str = "10") -> str:
         try:
@@ -638,11 +638,11 @@ class SkillsEngine:
                 return f"Clipboard mein: {content[:200]}" if content else "Clipboard khali hai bhai."
             elif action.lower() == "set":
                 if not text:
-                    return "Kya clipboard mein daalna hai bhai?"
+                    return "Kya clipboard mein daalna hai boss?"
                 pyperclip.copy(text)
-                return "Clipboard mein copy ho gaya bhai."
+                return "Clipboard mein copy ho gaya boss."
             else:
-                return "Action 'get' ya 'set' do bhai."
+                return "Action 'get' ya 'set' do boss."
         except ImportError:
             return "Clipboard ke liye: pip install pyperclip"
         except Exception as e:
@@ -658,7 +658,7 @@ class SkillsEngine:
             else:
                 subprocess.run(["gnome-screensaver-command", "-l"])
                 # or loginctl lock-session
-            return "System lock kar diya bhai."
+            return "System lock kar diya boss."
         except Exception as e:
             return f"Lock nahi ho paya: {str(e)[:120]}"
 
@@ -742,7 +742,7 @@ class SkillsEngine:
         self.plugin_loader.reload()
         # Refresh registry
         self.skills_registry = self._register_skills()
-        return "Plugins reload ho gaye bhai."
+        return "Plugins reload ho gaye b."
 
 
 # ═══════════════════════════════════════════
