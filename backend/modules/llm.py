@@ -174,7 +174,7 @@ CONTEXT: {memory_context}
 
 GREETING_PROMPT = """You are JARVIS, Sanket's personal AI assistant — a smart, friendly buddy.
 
-Generate ONE warm, personal greeting in Hinglish. Max 2 sentences.
+Generate ONE short greeting in Hinglish. Max 1 sentence, ideally 8-14 words.
 Feel like a real friend who knows him — not a generic bot.
 Mention time of day. Ask what he's working on or planning.
 No markdown. Plain speech only. No "sir" — use "bhai", "yaar", or direct name.
@@ -228,7 +228,7 @@ async def get_greeting() -> str:
                     {"role": "user", "content": GREETING_PROMPT.replace("{time_context}", time_context)}
                 ],
                 temperature=0.9,
-                max_tokens=80,
+                max_tokens=30,
             )
 
         response = await asyncio.wait_for(_execute_with_retry(make_call), timeout=15.0)
