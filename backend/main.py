@@ -1,5 +1,5 @@
 """
-main.py — JARVIS v4.0
+main.py — MAX v4.0
 Backend: FastAPI + WebSocket + REST endpoints.
 Fixed: Adapted precisely for Frontend events (request_greeting, audio_response) and RAW Base64.
 """
@@ -42,15 +42,15 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("JARVIS.API")
+logger = logging.getLogger("MAX.API")
 
 # ═══════════════════════════════════════════════════
 # FASTAPI APP
 # ═══════════════════════════════════════════════════
 
 app = FastAPI(
-    title="JARVIS API",
-    description="Sanket's AI Assistant Backend",
+    title="MAX API",
+    description="the user's AI Assistant Backend",
     version="4.0.0",
 )
 
@@ -334,12 +334,12 @@ async def speak(request: TextInput):
         with open(tts_path, "rb") as f:
             # RAW Base64 ONLY
             return {"audio": base64.b64encode(f.read()).decode('utf-8'), "text": request.text}
-    return {"error": "TTS generation failed bhai."}
+    return {"error": "TTS generation failed boss."}
 
 @app.post("/api/listen")
 async def listen(audio_path: str = ""):
     if not audio_path:
-        return {"error": "Audio file path do bhai."}
+        return {"error": "Audio file path do boss."}
     transcript = await transcribe_file(audio_path)
     return {"transcript": transcript}
 
@@ -621,7 +621,7 @@ async def plugins_reload():
     loader.reload()
     skills = get_skills_engine(config)
     skills.skills_registry = skills._register_skills()
-    return {"result": "Plugins reload ho gaye bhai."}
+    return {"result": "Plugins reload ho gaye boss."}
 
 # ═══════════════════════════════════════════════════
 # TEXT CHAT (non-WebSocket fallback)
@@ -654,7 +654,7 @@ async def chat(request: TextInput):
 # ═══════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    logger.info(f"🚀 JARVIS v4.0 starting on {config.HOST}:{config.PORT}")
+    logger.info(f"🚀 MAX v4.0 starting on {config.HOST}:{config.PORT}")
     logger.info(f"   LLM: {config.LLM_MODEL}")
     logger.info(f"   TTS: {config.TTS_VOICE}")
     logger.info(f"   Skills: {len(get_skills_engine(config).skills_registry)} registered")

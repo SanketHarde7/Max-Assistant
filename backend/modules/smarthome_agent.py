@@ -1,5 +1,5 @@
 """
-smarthome_agent.py + ir_controller.py — JARVIS v4.0
+smarthome_agent.py + ir_controller.py — MAX v4.0
 Smart Home Control:
 - IR Blaster (Broadlink RM Mini 3/Pro) for remote-only devices like Havells fan
 - Tuya WiFi devices (optional)
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Optional
 from config import config
 
-logger = logging.getLogger("JARVIS.SMARTHOME")
+logger = logging.getLogger("MAX.SMARTHOME")
 
 IR_COMMANDS_FILE = Path(config.DATA_DIR) / "ir_commands.json"
 
@@ -71,10 +71,10 @@ class IRController:
         """Learn a new IR command from remote."""
         dev = self._connect()
         if not dev:
-            return "IR blaster connect nahi ho paya bhai. Check IP ya install broadlink."
+            return "IR blaster connect nahi ho paya boss. Check IP ya install broadlink."
         try:
             dev.enter_learning()
-            return f"Learning mode on bhai! Remote se '{name}' button dabao — 10 sec mein capture karunga."
+            return f"Learning mode on boss! Remote se '{name}' button dabao — 10 sec mein capture karunga."
         except Exception as e:
             return f"Learn mode fail: {str(e)[:120]}"
 
@@ -83,16 +83,16 @@ class IRController:
         cmds = _load_ir_commands()
         if name not in cmds:
             available = ", ".join(cmds.keys()) if cmds else "koi bhi nahi"
-            return f"Command '{name}' saved nahi hai bhai. Available: {available}. Learn karne ke liye bol."
+            return f"Command '{name}' saved nahi hai boss. Available: {available}. Learn karne ke liye bol."
         dev = self._connect()
         if not dev:
-            return "IR blaster connect nahi ho paya bhai."
+            return "IR blaster connect nahi ho paya boss."
         try:
             hex_data = cmds[name]
             # broadlink expects bytes
             data = bytes.fromhex(hex_data)
             dev.send_data(data)
-            return f"IR command bhej diya bhai — '{name}'."
+            return f"IR command bhej diya boss — '{name}'."
         except Exception as e:
             return f"IR send fail: {str(e)[:120]}"
 
@@ -101,7 +101,7 @@ class IRController:
         cmds = _load_ir_commands()
         cmds[name] = hex_data
         _save_ir_commands(cmds)
-        return f"Command '{name}' save ho gayi bhai."
+        return f"Command '{name}' save ho gayi boss."
 
 
 class SmartHomeAgent:
@@ -145,7 +145,7 @@ class SmartHomeAgent:
         if d:
             try:
                 d.turn_on() if action.lower() == "on" else d.turn_off()
-                return f"Smart light {action} kar diya bhai."
+                return f"Smart light {action} kar diya boss."
             except Exception as e:
                 return f"Light control fail: {str(e)[:120]}"
         # Fallback IR

@@ -1,5 +1,5 @@
 """
-plugin_loader.py — JARVIS v4.0
+plugin_loader.py — MAX v4.0
 Dynamic plugin system. Zero config auto-loading.
 - Each plugin = one Python file in plugins/ folder
 - Must have register() function returning skill metadata
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Callable, Optional
 from config import config
 
-logger = logging.getLogger("JARVIS.PLUGINS")
+logger = logging.getLogger("MAX.PLUGINS")
 
 
 class PluginLoader:
@@ -80,7 +80,7 @@ class PluginLoader:
     def list_plugins(self) -> str:
         """Human-readable plugin list."""
         if not self.loaded_plugins:
-            return "Koi plugin load nahi hua bhai. plugins/ folder mein .py files daal."
+            return "Koi plugin load nahi hua boss. plugins/ folder mein .py files daal."
         lines = [f"🔌 {len(self.loaded_plugins)} plugins loaded:"]
         for name, meta in self.loaded_plugins.items():
             lines.append(f"  • {name}: {meta.get('description', '—')}")
@@ -90,10 +90,10 @@ class PluginLoader:
         """Execute a loaded plugin handler."""
         handler = self.handlers.get(name)
         if not handler:
-            return f"Plugin '{name}' loaded nahi hai bhai."
+            return f"Plugin '{name}' loaded nahi hai boss."
         try:
             result = handler(*args)
-            return str(result) if result else "Plugin chal gaya bhai."
+            return str(result) if result else "Plugin chal gaya boss."
         except Exception as e:
             return f"Plugin '{name}' error: {str(e)[:120]}"
 

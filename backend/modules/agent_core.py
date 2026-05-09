@@ -1,6 +1,6 @@
 """
 Agent Core Module — Task Planning & Multi-Step Execution
-Makes JARVIS truly agentic:
+Makes MAX truly agentic:
 - Task decomposition (break complex tasks into steps)
 - Multi-step execution with error recovery
 - Context learning (remembers user corrections)
@@ -19,7 +19,7 @@ from dataclasses import dataclass, asdict
 
 from groq import AsyncGroq
 
-logger = logging.getLogger("JARVIS.AGENT")
+logger = logging.getLogger("MAX.AGENT")
 
 
 @dataclass
@@ -81,7 +81,7 @@ class TaskPlanner:
     Uses LLM for intelligent task breakdown.
     """
 
-    PLANNING_PROMPT = """You are JARVIS Task Planner. Break down the user's request into clear steps.
+    PLANNING_PROMPT = """You are MAX Task Planner. Break down the user's request into clear steps.
 Each step must use ONE skill only.
 
 Available skills and their parameters:

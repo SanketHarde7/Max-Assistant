@@ -1,5 +1,5 @@
 """
-memory.py — JARVIS v4.0
+memory.py — MAX v4.0
 Added: Personality evolution tracking, auto fact extraction, buddy tone.
 """
 import json
@@ -58,7 +58,7 @@ class MemoryManager:
             "messages": [],
             "summary": "",
             "user_facts": {
-                "name": "Sanket",
+                "name": "the user",
                 "location": "Maharashtra",
                 "preferences": {}
             },
@@ -188,7 +188,7 @@ class MemoryManager:
             context_parts.append(f"PREVIOUS: {self.memory['summary']}")
         
         for msg in self.memory["messages"][-self.max_messages:]:
-            role = "You" if msg["role"] == "user" else "Jarvis"
+            role = "You" if msg["role"] == "user" else "Max"
             context_parts.append(f"{role}: {msg['content']}")
         
         return "\n".join(context_parts)
@@ -223,7 +223,7 @@ class MemoryManager:
     async def extract_and_store_facts(self, user_text: str) -> List[str]:
         """
         Simple pattern-based fact extraction.
-        e.g. 'Mera naam Sanket hai' -> name=Sanket
+        e.g. 'Mera naam the user hai' -> name=the user
         """
         import re
         facts_found = []

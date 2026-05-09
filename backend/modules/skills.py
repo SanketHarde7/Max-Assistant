@@ -1,5 +1,5 @@
 """
-skills.py — JARVIS v4.0
+skills.py — MAX v4.0
 Fixed + Enhanced:
 1. parse_and_execute method (was missing in Gemini version)
 2. Made async — coroutines awaited correctly
@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-logger = logging.getLogger("JARVIS.SKILLS")
+logger = logging.getLogger("MAX.SKILLS")
 
 try:
     import pyautogui
@@ -73,7 +73,7 @@ def _truncate_for_tts(result: str, skill_name: str) -> str:
     last = max(truncated.rfind('. '), truncated.rfind('! '), truncated.rfind('? '))
     if last > TTS_MAX_CHARS // 2:
         truncated = truncated[:last + 1]
-    return f"{truncated} Details screen pe hain bhai."
+    return f"{truncated} Details screen pe hain boss."
 
 
 class SkillsEngine:
@@ -363,16 +363,16 @@ class SkillsEngine:
 
             def _countdown():
                 time.sleep(secs)
-                msg = f"JARVIS: {label} khatam! {secs}s ho gaye."
+                msg = f"MAX: {label} khatam! {secs}s ho gaye."
                 try:
                     from plyer import notification
-                    notification.notify(title="JARVIS Timer", message=msg, timeout=8)
+                    notification.notify(title="MAX Timer", message=msg, timeout=8)
                     return
                 except ImportError:
                     pass
                 if PYAUTOGUI_AVAILABLE:
                     try:
-                        pyautogui.alert(text=msg, title="JARVIS Timer", button="OK")
+                        pyautogui.alert(text=msg, title="MAX Timer", button="OK")
                         return
                     except Exception:
                         pass
@@ -380,14 +380,14 @@ class SkillsEngine:
                     subprocess.run([
                         "powershell", "-Command",
                         f"Add-Type -AssemblyName System.Windows.Forms; "
-                        f"[System.Windows.Forms.MessageBox]::Show('{msg}','JARVIS')"
+                        f"[System.Windows.Forms.MessageBox]::Show('{msg}','MAX')"
                     ], capture_output=True)
 
             threading.Thread(target=_countdown, daemon=True).start()
             mins, rem = divmod(secs, 60)
-            return f"Timer set for {f'{mins}m {rem}s' if mins else f'{secs}s'} bhai."
+            return f"Timer set for {f'{mins}m {rem}s' if mins else f'{secs}s'} boss."
         except ValueError:
-            return "Seconds mein duration do bhai."
+            return "Seconds mein duration do boss."
 
     def _skill_note(self, *args) -> str:
         try:
@@ -455,7 +455,7 @@ class SkillsEngine:
 
     def _skill_screenshot(self, filename: str = "", **kwargs) -> str:
         if not PYAUTOGUI_AVAILABLE:
-            return "Screenshot ke liye pyautogui install nahi hai sir ."
+            return "Screenshot ke liye pyautogui install nahi hai boss."
         try:
             save_dir = Path(self.config.DATA_DIR) / "screenshots"
             save_dir.mkdir(parents=True, exist_ok=True)
@@ -463,7 +463,7 @@ class SkillsEngine:
             base = filename.strip() or "jarvis_screenshot"
             filepath = save_dir / f"{base}_{ts}.png"
             pyautogui.screenshot(str(filepath))
-            return f"Screenshot li bhai: {filepath.name}"
+            return f"Screenshot li boss: {filepath.name}"
         except Exception as e:
             return f"Screenshot failed: {e}"
 
@@ -500,7 +500,7 @@ class SkillsEngine:
 
     def _skill_web_open(self, url: str = "", **kwargs) -> str:
         if not url:
-            return "URL do bhai."
+            return "URL do boss."
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         try:
@@ -530,7 +530,7 @@ class SkillsEngine:
                         vol.SetMute(not vol.GetMute(), None)
                     elif action_lower == "set":
                         vol.SetMasterVolumeLevelScalar(min(1.0, int(value) / 100.0), None)
-                    return f"Volume {action_lower} kar diya bhai."
+                    return f"Volume {action_lower} kar diya boss."
                 except ImportError:
                     return "Volume ke liye: pip install pycaw"
             elif system == "Darwin":
@@ -617,16 +617,16 @@ class SkillsEngine:
                     else:
                         new_val = max(0, min(100, int(value)))
                     methods.WmiSetBrightness(new_val, 0)
-                    return f"Brightness {new_val}% kar diya bhai."
+                    return f"Brightness {new_val}% kar diya boss."
                 except ImportError:
                     return "Brightness ke liye: pip install wmi pywin32"
             elif system == "Darwin":
                 # macOS brightness control via brightness CLI or osascript
                 subprocess.run(["osascript", "-e", f"tell application \"System Events\" to key code 144"])
-                return "Brightness adjust kar diya bhai."
+                return "Brightness adjust kar diya boss."
             else:
                 subprocess.run(["brightnessctl", "set", f"{value}%"])
-                return f"Brightness {value}% bhai."
+                return f"Brightness {value}% boss."
         except Exception as e:
             return f"Brightness control failed: {str(e)[:120]}"
 
@@ -635,7 +635,7 @@ class SkillsEngine:
             import pyperclip
             if action.lower() == "get":
                 content = pyperclip.paste()
-                return f"Clipboard mein: {content[:200]}" if content else "Clipboard khali hai bhai."
+                return f"Clipboard mein: {content[:200]}" if content else "Clipboard khali hai boss."
             elif action.lower() == "set":
                 if not text:
                     return "Kya clipboard mein daalna hai boss?"
@@ -681,7 +681,7 @@ class SkillsEngine:
 
     def _skill_calendar_add(self, *args) -> str:
         if len(args) < 2:
-            return "Usage: calendar_add:title:date:time bhai."
+            return "Usage: calendar_add:title:date:time boss."
         title = args[0]
         date = args[1]
         time_str = args[2] if len(args) > 2 else ""
@@ -704,12 +704,12 @@ class SkillsEngine:
 
     def _skill_browser_type(self, *args) -> str:
         if len(args) < 2:
-            return "Usage: browser_type:selector:text bhai."
+            return "Usage: browser_type:selector:text boss."
         return self.browser_agent.type_text(args[0], args[1])
 
     def _skill_browser_scrape(self, *args) -> str:
         if len(args) < 2:
-            return "Usage: browser_scrape:url:query bhai."
+            return "Usage: browser_scrape:url:query boss."
         return self.browser_agent.scrape(args[0], args[1])
 
     # ═══════════════════════════════════════════
