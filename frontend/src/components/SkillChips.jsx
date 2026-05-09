@@ -22,13 +22,13 @@ export default function SkillChips({ onSkillSelect, disabled = false, chatOpen =
       style={{
         position: 'fixed',
         bottom: '1.5rem',
-        left: chatOpen ? 'calc(50% - 190px)' : '50%',
-        transform: 'translateX(-50%)',
+        left: chatOpen ? '1.5rem' : '50%',
+        transform: chatOpen ? 'none' : 'translateX(-50%)',
         transition: 'left 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
         display: 'flex',
         gap: '0.5rem',
         flexWrap: 'wrap',
-        justifyContent: 'center',
+        justifyContent: chatOpen ? 'flex-start' : 'center',
         maxWidth: '600px',
         zIndex: 20,
       }}

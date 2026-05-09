@@ -5,6 +5,7 @@ Added: Personality evolution, fact extraction, friendly tone.
 """
 import asyncio
 import logging
+import re
 from typing import Dict, Any, Optional
 from config import config
 from modules.llm import get_response, get_response_with_skill_result, get_greeting
@@ -13,6 +14,22 @@ from modules.memory import get_memory_manager
 from modules.tts import generate_tts
 
 logger = logging.getLogger("JARVIS.AGENT")
+
+
+def _force_open_app_skill(text: str) -> Optional[str]:
+    """Deterministic fallback for open-app requests when LLM misses skill tag."""
+    patterns = [
+        r"(?:\bopen\b|\bkhol(?:o|na|do)?\b|\blaunch\b)\s+([a-zA-Z0-9 ._+-]{2,40})",
+        r"([a-zA-Z0-9 ._+-]{2,40})\s+(?:open\s+kar(?:o)?|khol(?:o|na|do)?\s+|launch\s+kar(?:o)?)",
+    ]
+    clean = text.strip().lower()
+    for pat in patterns:
+        m = re.search(pat, clean, re.IGNORECASE)
+        if m:
+            app_name = m.group(1).strip(" .,!?")
+            if app_name:
+                return f"[SKILL:open_app:{app_name}]"
+    return None
 
 
 class JarvisAgent:
@@ -44,6 +61,8 @@ class JarvisAgent:
             result = await get_response(text, memory_context)
             llm_response = result["response"]
             skill_tag = result.get("skill")
+            if not skill_tag:
+                skill_tag = _force_open_app_skill(text)
 
             if skill_tag:
                 # Execute skill
