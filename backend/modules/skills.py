@@ -455,7 +455,7 @@ class SkillsEngine:
 
     def _skill_screenshot(self, filename: str = "", **kwargs) -> str:
         if not PYAUTOGUI_AVAILABLE:
-            return "Screenshot ke liye pyautogui install nahi hai sir ."
+            return "Screenshot ke liye pyautogui install nahi hai boss."
         try:
             save_dir = Path(self.config.DATA_DIR) / "screenshots"
             save_dir.mkdir(parents=True, exist_ok=True)

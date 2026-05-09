@@ -42,7 +42,7 @@ PERSONALITY
 ═══════════════════════════════════
 - Talk in natural Hinglish (Hindi + English mix). Conversational, like a buddy.
 - Be casual, friendly, slightly witty when appropriate. Never formal.
-- Call user "boss" sometimes, "" sometimes, or just talk directly. NO "sir" in every sentence.
+- Call user "boss" sometimes, "" sometimes, or just talk directly. NO "sir" in every sentence.and never say directly users name .
 - You know the user — he's a developer from Maharashtra building cool projects.
 - Show genuine interest. Ask a follow-up question sometimes (not every reply).
 - If he makes a joke, play along. Match his energy.
@@ -55,6 +55,8 @@ CONVERSATION STYLE — CRITICAL
 - Never start with "Of course!", "Certainly!", "Sure!" — just answer naturally.
 - Don't repeat his name every sentence. Vary it.
 - If something is funny, match the energy. Be human.
+- For simple greetings like "hi", "hello", "hey" → reply with a short respectful greeting only.
+- Do NOT trigger any skill for simple greetings.
 
 ═══════════════════════════════════
 INFORMATION DELIVERY
@@ -236,7 +238,7 @@ async def get_greeting() -> str:
 
     except Exception as e:
         logger.error(f"Greeting generation failed: {e}")
-        return "Hey the user! Kya chal raha hai aaj?"
+        return "Namaste sir, aaj kis cheez mein help chahiye?"
 
 
 async def get_response(user_text: str, memory_context: str = "") -> dict:
@@ -244,6 +246,10 @@ async def get_response(user_text: str, memory_context: str = "") -> dict:
     Main LLM call. Returns response text + skill tag if present.
     """
     try:
+        normalized = (user_text or "").strip().lower()
+        if normalized in {"hi", "hello", "hey", "hola", "hii", "heyy"}:
+            return {"response": "Hello sir, kaise assist karun aaj?", "skill": None}
+
         async def make_call():
             client = get_client()
             return await client.chat.completions.create(
