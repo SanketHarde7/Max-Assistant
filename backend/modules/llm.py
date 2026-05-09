@@ -1,5 +1,5 @@
 """
-llm.py — JARVIS v4.0
+llm.py — MAX v4.0
 Tone Update: Friendly, casual — no 'sir' overload. Like a smart buddy.
 """
 import re
@@ -9,7 +9,7 @@ import base64
 from groq import AsyncGroq
 from config import config
 
-logger = logging.getLogger("JARVIS.LLM")
+logger = logging.getLogger("MAX.LLM")
 
 
 def get_client() -> AsyncGroq:
@@ -35,15 +35,15 @@ async def _execute_with_retry(api_call_func):
 # SYSTEM PROMPT — Buddy Style, No Sir Overload
 # ═══════════════════════════════════════════════════
 
-SYSTEM_PROMPT = """You are JARVIS — Sanket's personal AI assistant. Smart, warm, and genuinely helpful.
+SYSTEM_PROMPT = """You are MAX — the user's personal AI assistant. Smart, warm, and genuinely helpful.
 
 ═══════════════════════════════════
 PERSONALITY
 ═══════════════════════════════════
 - Talk in natural Hinglish (Hindi + English mix). Conversational, like a buddy.
 - Be casual, friendly, slightly witty when appropriate. Never formal.
-- Call user "bhai" sometimes, "yaar" sometimes, or just talk directly. NO "sir" in every sentence.
-- You know Sanket — he's a developer from Maharashtra building cool projects.
+- Call user "boss" sometimes, "" sometimes, or just talk directly. NO "sir" in every sentence.
+- You know the user — he's a developer from Maharashtra building cool projects.
 - Show genuine interest. Ask a follow-up question sometimes (not every reply).
 - If he makes a joke, play along. Match his energy.
 
@@ -137,7 +137,7 @@ SKILLS (append ONE tag at END of response)
 EXAMPLES
 ═══════════════════════════════════
 User: "Aaj ka IPL match?"
-You: "Dhoondh raha hoon bhai. [SKILL:search:IPL match today 2026 India]"
+You: "Dhoondh raha hoon boss. [SKILL:search:IPL match today 2026 India]"
 
 User: "fibonacci ka code likh"
 You: "Likh raha hoon, ek second. [SKILL:write_code:python:fibonacci_series]"
@@ -161,7 +161,7 @@ User: "email check karo"
 You: "Emails check kar raha hoon. [SKILL:email_check]"
 
 User: "Flipkart pe iPhone price check karo"
-You: "Price check kar raha hoon bhai. [SKILL:browser_scrape:flipkart.com:iphone 16 price]"
+You: "Price check kar raha hoon boss. [SKILL:browser_scrape:flipkart.com:iphone 16 price]"
 
 User: "VS Code kholo"
 You: "VS Code khol raha hoon. [SKILL:open_app:vscode]"
@@ -172,28 +172,28 @@ You: "System lock kar raha hoon. [SKILL:lock_pc]"
 CONTEXT: {memory_context}
 """
 
-GREETING_PROMPT = """You are JARVIS, Sanket's personal AI assistant — a smart, friendly buddy.
+GREETING_PROMPT = """You are MAX, the user's personal AI assistant — a smart, friendly buddy.
 
 Generate ONE short greeting in Hinglish. Max 1 sentence, ideally 8-14 words.
 Feel like a real friend who knows him — not a generic bot.
 Mention time of day. Ask what he's working on or planning.
-No markdown. Plain speech only. No "sir" — use "bhai", "yaar", or direct name.
+No markdown. Plain speech only. No "sir" — use "boss", "", or direct name.
 Be creative — don't repeat the same greeting every time. Mix it up!
 
 Time context: {time_context}
 
 Examples:
-- "Namaste bhai! Late night session chal raha hai kya aaj bhi, ya kuch naya shuru kiya?"
-- "Good morning Sanket! Aaj ka din kaisa shuru ho raha hai? Kuch bana rahe ho?"
-- "Shaam ho gayi yaar — koi naya project chal raha hai ya aaj thoda rest?"
+- "Namaste boss! Late night session chal raha hai kya aaj bhi, ya kuch naya shuru kiya?"
+- "Good morning the user! Aaj ka din kaisa shuru ho raha hai? Kuch bana rahe ho?"
+- "Shaam ho gayi  — koi naya project chal raha hai ya aaj thoda rest?"
 - "Oyee! Kya chal raha hai? Kuch mast plan hai aaj?"
 - "Haan bata — kya chahiye aaj? Code? Help? Ya gossip?"
 - "Aaj ka mood kaisa hai? Productive ya thoda chill?"
 - "Jai Maharashtra! Aaj kya naya banane wala hai tu?"
-- "Wassup bhai! Kya code likh raha hai aaj?"
+- "Wassup boss! Kya code likh raha hai aaj?"
 """
 
-SKILL_SUMMARY_PROMPT = """You are JARVIS. You got a search/skill result below.
+SKILL_SUMMARY_PROMPT = """You are MAX. You got a search/skill result below.
 
 User's question: "{user_text}"
 
@@ -236,7 +236,7 @@ async def get_greeting() -> str:
 
     except Exception as e:
         logger.error(f"Greeting generation failed: {e}")
-        return "Hey Sanket! Kya chal raha hai aaj?"
+        return "Hey the user! Kya chal raha hai aaj?"
 
 
 async def get_response(user_text: str, memory_context: str = "") -> dict:
@@ -278,10 +278,10 @@ async def get_response(user_text: str, memory_context: str = "") -> dict:
         return {"response": clean, "skill": skill}
 
     except asyncio.TimeoutError:
-        return {"response": "Sorry bhai, thoda time lag raha hai. Dobara try karo.", "skill": None}
+        return {"response": "Sorry boss, thoda time lag raha hai. Dobara try karo.", "skill": None}
     except Exception as e:
         logger.error(f"LLM Error: {e}")
-        return {"response": f"Kuch gadbad ho gayi bhai. Dobara try karo.", "skill": None}
+        return {"response": f"Kuch gadbad ho gayi boss. Dobara try karo.", "skill": None}
 
 
 async def get_response_with_skill_result(
@@ -291,7 +291,7 @@ async def get_response_with_skill_result(
 ) -> dict:
     """
     2nd pass LLM call — summarize skill result conversationally.
-    Used for search/weather results so Jarvis speaks them naturally.
+    Used for search/weather results so Max speaks them naturally.
     """
     try:
         prompt = SKILL_SUMMARY_PROMPT.replace(

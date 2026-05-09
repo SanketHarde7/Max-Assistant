@@ -1,5 +1,5 @@
 """
-browser_agent.py — JARVIS v4.0
+browser_agent.py — MAX v4.0
 Selenium-based browser automation. Zero cost with webdriver-manager.
 Skills: browser_open, browser_click, browser_type, browser_scrape
 """
@@ -8,7 +8,7 @@ import asyncio
 from typing import Optional, Dict, Any
 from config import config
 
-logger = logging.getLogger("JARVIS.BROWSER")
+logger = logging.getLogger("MAX.BROWSER")
 
 
 class BrowserAgent:
@@ -47,7 +47,7 @@ class BrowserAgent:
     def _ensure_driver(self) -> str:
         d = self._get_driver()
         if d is None:
-            return "Browser start nahi ho paya bhai. Selenium install hai? 'pip install selenium webdriver-manager'"
+            return "Browser start nahi ho paya boss. Selenium install hai? 'pip install selenium webdriver-manager'"
         return "ok"
 
     def open_url(self, url: str) -> str:
@@ -58,7 +58,7 @@ class BrowserAgent:
             url = "https://" + url
         try:
             self._driver.get(url)
-            return f"Browser mein khola bhai: {url}"
+            return f"Browser mein khola boss: {url}"
         except Exception as e:
             return f"URL load nahi ho paya: {str(e)[:120]}"
 
@@ -75,7 +75,7 @@ class BrowserAgent:
                 EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
             )
             el.click()
-            return f"Element click ho gaya bhai."
+            return f"Element click ho gaya boss."
         except Exception as e:
             return f"Click nahi ho paya: {str(e)[:120]}"
 
@@ -93,7 +93,7 @@ class BrowserAgent:
             )
             el.clear()
             el.send_keys(text)
-            return f"Type kar diya bhai."
+            return f"Type kar diya boss."
         except Exception as e:
             return f"Type nahi ho paya: {str(e)[:120]}"
 
@@ -143,7 +143,7 @@ class BrowserAgent:
             except Exception:
                 pass
             self._driver = None
-        return "Browser band kar diya bhai."
+        return "Browser band kar diya boss."
 
 
 # Singleton

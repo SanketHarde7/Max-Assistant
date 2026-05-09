@@ -1,5 +1,5 @@
 """
-agent_core.py — JARVIS v4.0
+agent_core.py — MAX v4.0
 Central orchestrator: manages LLM, Skills, Memory, TTS/STT.
 Added: Personality evolution, fact extraction, friendly tone.
 """
@@ -13,7 +13,7 @@ from modules.skills import get_skills_engine
 from modules.memory import get_memory_manager
 from modules.tts import generate_tts
 
-logger = logging.getLogger("JARVIS.AGENT")
+logger = logging.getLogger("MAX.AGENT")
 
 
 def _force_open_app_skill(text: str) -> Optional[str]:
@@ -32,8 +32,8 @@ def _force_open_app_skill(text: str) -> Optional[str]:
     return None
 
 
-class JarvisAgent:
-    """Central orchestrator for JARVIS."""
+class MaxAgent:
+    """Central orchestrator for MAX."""
 
     def __init__(self):
         self.config = config
@@ -81,7 +81,7 @@ class JarvisAgent:
                         final_response = llm_response
                 else:
                     # Skill failed
-                    error = skill_result.get("error", "Skill failed bhai")
+                    error = skill_result.get("error", "Skill failed boss")
                     final_response = f"{llm_response} (Error: {error[:60]})"
             else:
                 final_response = llm_response
@@ -106,7 +106,7 @@ class JarvisAgent:
         except Exception as e:
             logger.error(f"process_text_input error: {e}")
             return {
-                "response": "Kuch gadbad ho gayi bhai. Dobara try karo.",
+                "response": "Kuch gadbad ho gayi boss. Dobara try karo.",
                 "tts_path": "",
                 "skill_used": None,
             }
@@ -124,15 +124,15 @@ class JarvisAgent:
     async def clear_memory(self) -> str:
         """Reset conversation history."""
         success = await self.memory.clear_memory()
-        return "Memory clear ho gayi bhai." if success else "Memory clear nahi ho payi bhai."
+        return "Memory clear ho gayi boss." if success else "Memory clear nahi ho payi boss."
 
 
 # Singleton
-_agent: Optional[JarvisAgent] = None
+_agent: Optional[MaxAgent] = None
 
 
-def get_agent() -> JarvisAgent:
+def get_agent() -> MaxAgent:
     global _agent
     if _agent is None:
-        _agent = JarvisAgent()
+        _agent = MaxAgent()
     return _agent

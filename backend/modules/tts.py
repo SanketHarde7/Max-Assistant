@@ -1,5 +1,5 @@
 """
-tts.py — JARVIS v4.0
+tts.py — MAX v4.0
 Text-to-Speech via Edge-TTS (free, no API keys needed).
 """
 import os
@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 from config import config
 
-logger = logging.getLogger("JARVIS.TTS")
+logger = logging.getLogger("MAX.TTS")
 
 
 async def generate_tts(text: str, voice: str = "", output_path: str = "") -> str:

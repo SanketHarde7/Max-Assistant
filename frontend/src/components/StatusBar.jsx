@@ -1,6 +1,6 @@
 /**
  * 📊 HUD Status Bar — Top Header
- * Shows JARVIS branding, connection status, current state, and time
+ * Shows MAX branding, connection status, current state, and time
  */
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -69,7 +69,7 @@ export default function StatusBar({
             margin: 0,
           }}
         >
-          JARVIS
+          MAX
         </h1>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

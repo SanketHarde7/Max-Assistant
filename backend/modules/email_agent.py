@@ -1,5 +1,5 @@
 """
-email_agent.py — JARVIS v4.0
+email_agent.py — MAX v4.0
 Gmail Email Integration (Free tier, needs App Password)
 Skills: email_send, email_check, email_reply
 """
@@ -39,7 +39,7 @@ class EmailAgent:
     def send_email(self, to: str, subject: str, body: str) -> str:
         """Send email via SMTP."""
         if not self._enabled:
-            return "Email setup nahi hai bhai. .env mein EMAIL_ADDRESS aur EMAIL_APP_PASSWORD daal."
+            return "Email setup nahi hai boss. .env mein EMAIL_ADDRESS aur EMAIL_APP_PASSWORD daal."
         try:
             msg = MIMEText(body, "plain", "utf-8")
             msg["Subject"] = subject
@@ -51,14 +51,14 @@ class EmailAgent:
                 server.login(self.email_address, self.app_password)
                 server.sendmail(self.email_address, [to], msg.as_string())
 
-            return f"Email bhej diya bhai — {to} ko."
+            return f"Email bhej diya boss — {to} ko."
         except Exception as e:
             return f"Email bhejne mein dikkat: {str(e)[:120]}"
 
     def check_emails(self, limit: int = 5) -> str:
         """Check latest unread emails via IMAP."""
         if not self._enabled:
-            return "Email setup nahi hai bhai. .env mein credentials daal."
+            return "Email setup nahi hai boss. .env mein credentials daal."
         mail = self._get_imap()
         if not mail:
             return "Gmail connect nahi ho paya. Check internet ya credentials."
@@ -66,7 +66,7 @@ class EmailAgent:
             mail.select("inbox")
             status, data = mail.search(None, "UNSEEN")
             if status != "OK" or not data[0]:
-                return "Koi unread email nahi hai bhai. Inbox clean hai!"
+                return "Koi unread email nahi hai boss. Inbox clean hai!"
 
             ids = data[0].split()
             ids = ids[-limit:]  # Latest N
@@ -87,7 +87,7 @@ class EmailAgent:
             mail.logout()
 
             if not results:
-                return "Koi unread email nahi hai bhai."
+                return "Koi unread email nahi hai boss."
             return f"{len(results)} unread emails:\n" + "\n".join(results)
 
         except Exception as e:
