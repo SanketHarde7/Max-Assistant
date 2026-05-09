@@ -1,5 +1,5 @@
 """
-config.py — JARVIS v4.0
+config.py — MAX v4.0
 Added: Email, SmartHome, Browser, Plugin system configs.
 """
 import os
@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("JARVIS.CONFIG")
+logger = logging.getLogger("MAX.CONFIG")
 
 
 def get_project_root() -> Path:

@@ -1,5 +1,5 @@
 """
-stt.py — JARVIS v4.0
+stt.py — MAX v4.0
 Speech-to-Text via Groq Whisper.
 """
 import os
@@ -13,7 +13,7 @@ from typing import Union
 from groq import AsyncGroq
 from config import config
 
-logger = logging.getLogger("JARVIS.STT")
+logger = logging.getLogger("MAX.STT")
 
 
 def _decode_audio_input(audio_data: Union[bytes, str]) -> bytes:
@@ -61,7 +61,7 @@ async def transcribe_audio(audio_data: Union[bytes, str], model: str = "whisper-
 
     except Exception as e:
         logger.error(f"STT failed: {e}")
-        return f"Sun nahi paya bhai, dobara bol."
+        return f"Sun nahi paya boss, dobara bol."
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -81,4 +81,4 @@ async def transcribe_file(audio_path: str, model: str = "whisper-large-v3") -> s
         return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
     except Exception as e:
         logger.error(f"STT file failed: {e}")
-        return "File transcribe nahi ho payi bhai."
+        return "File transcribe nahi ho payi boss."

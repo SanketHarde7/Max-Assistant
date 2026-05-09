@@ -183,7 +183,7 @@ export default function ChatPanel({
                   marginBottom: '0.3rem',
                 }}
               >
-                {msg.role === 'user' ? 'YOU' : 'JARVIS'}
+                {msg.role === 'user' ? 'YOU' : 'MAX'}
               </div>
               <div
                 style={{
@@ -221,7 +221,7 @@ export default function ChatPanel({
                   marginBottom: '0.3rem',
                 }}
               >
-                JARVIS
+                MAX
               </div>
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                 {[0, 1, 2].map((i) => (

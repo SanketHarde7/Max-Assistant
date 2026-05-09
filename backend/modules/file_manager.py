@@ -1,5 +1,5 @@
 """
-file_manager.py — JARVIS v4.0
+file_manager.py — MAX v4.0
 Enhanced file management with search, list, read, edit.
 Friendly tone, no 'sir' overload.
 """
@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 
-logger = logging.getLogger("JARVIS.FILE_MANAGER")
+logger = logging.getLogger("MAX.FILE_MANAGER")
 
 
 class FileManager:
-    """Advanced file management for JARVIS."""
+    """Advanced file management for MAX."""
 
     def __init__(self, config):
         self.config = config
@@ -37,13 +37,13 @@ class FileManager:
                 filename = args[0]
                 context = ""
             else:
-                return "File ka naam aur context do bhai."
+                return "File ka naam aur context do boss."
 
             logger.info(f"Searching for: {filename} in context: {context}")
 
             results = self._search_for_file(filename)
             if not results:
-                return f"'{filename}' kahi nahi mila bhai."
+                return f"'{filename}' kahi nahi mila boss."
 
             best_match = results[0]
             content = self._read_file_safe(best_match)
@@ -67,7 +67,7 @@ class FileManager:
 
         except Exception as e:
             logger.error(f"find_and_explain error: {e}")
-            return f"File dhundne mein error aaya bhai: {str(e)}"
+            return f"File dhundne mein error aaya boss: {str(e)}"
 
     def _search_for_file(self, filename: str) -> List[Path]:
         matches = []
@@ -94,7 +94,7 @@ class FileManager:
             max_size = self.max_file_size_kb * 1024
             if size > max_size:
                 with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-                    return f.read(max_size) + "\n\n... (file truncated, bahut bada hai bhai)"
+                    return f.read(max_size) + "\n\n... (file truncated, bahut bada hai boss)"
             return filepath.read_text(encoding='utf-8', errors='replace')
         except Exception as e:
             return f"Error reading file: {str(e)}"
@@ -112,7 +112,7 @@ class FileManager:
             functions = [l.strip() for l in lines if l.strip().startswith('def ')]
             classes = [l.strip() for l in lines if l.strip().startswith('class ')]
 
-            explanation_parts.append(f"Python script hai bhai. {total_lines} lines.")
+            explanation_parts.append(f"Python script hai boss. {total_lines} lines.")
             if imports:
                 explanation_parts.append(f"Libraries: {', '.join(imports[:3])}")
             if classes:
@@ -140,7 +140,7 @@ class FileManager:
                 data = json.loads(content)
                 explanation_parts.append(f"JSON file hai. Top-level keys: {list(data.keys())[:5]}")
             except Exception:
-                explanation_parts.append(f"JSON file hai but invalid format bhai.")
+                explanation_parts.append(f"JSON file hai but invalid format boss.")
 
         elif ext in ('.md', '.txt'):
             words = len(content.split())
@@ -157,7 +157,7 @@ class FileManager:
             explanation_parts.append(f"Stylesheet hai. {selectors} selectors, {total_lines} lines.")
 
         else:
-            explanation_parts.append(f"File hai bhai. {total_lines} lines, {len(content)} characters.")
+            explanation_parts.append(f"File hai boss. {total_lines} lines, {len(content)} characters.")
             first_line = lines[0].strip() if lines else ""
             if first_line:
                 explanation_parts.append(f"First line: '{first_line[:50]}'")
@@ -214,13 +214,13 @@ class FileManager:
             if not path.is_absolute():
                 path = self.search_dirs[0] / folder
             if not path.exists():
-                return f"Folder nahi mila bhai: {folder}"
+                return f"Folder nahi mila boss: {folder}"
             if not path.is_dir():
-                return f"Yeh folder nahi hai bhai: {folder}"
+                return f"Yeh folder nahi hai boss: {folder}"
 
             items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
             if not items:
-                return f"📁 {path.name} — folder khali hai bhai."
+                return f"📁 {path.name} — folder khali hai boss."
 
             lines = [f"📁 {path.name}/ ({len([i for i in items if i.is_dir()])} folders, {len([i for i in items if i.is_file()])} files)"]
             for item in items[:30]:
@@ -235,13 +235,13 @@ class FileManager:
                 lines.append(f"  {icon} {item.name}{size}")
 
             if len(items) > 30:
-                lines.append(f"  ... aur {len(items) - 30} items aur hain bhai")
+                lines.append(f"  ... aur {len(items) - 30} items aur hain boss")
 
             return "\n".join(lines)
 
         except Exception as e:
             logger.error(f"list_files error: {e}")
-            return f"Files list karne mein error bhai: {str(e)}"
+            return f"Files list karne mein error boss: {str(e)}"
 
     # ═══════════════════════════════════════════
     # SKILL: read_file
@@ -250,13 +250,13 @@ class FileManager:
     def read_file(self, *args) -> str:
         try:
             if not args:
-                return "File path do bhai."
+                return "File path do boss."
             filepath_str = args[0]
             filepath = Path(filepath_str).expanduser().resolve()
             if not filepath.is_absolute():
                 filepath = self.search_dirs[0] / filepath_str
             if not filepath.exists():
-                return f"File nahi mila bhai: {filepath_str}"
+                return f"File nahi mila boss: {filepath_str}"
 
             content = self._read_file_safe(filepath)
             lines = content.split('\n')
@@ -267,13 +267,13 @@ class FileManager:
 
             if total_lines > 100:
                 preview = '\n'.join(lines[:50])
-                return f"{header}\n\n{preview}\n\n... ({total_lines - 50} aur lines hain bhai, complete file read ke liye code review kar sakta hoon)"
+                return f"{header}\n\n{preview}\n\n... ({total_lines - 50} aur lines hain boss, complete file read ke liye code review kar sakta hoon)"
             else:
                 return f"{header}\n\n{content}"
 
         except Exception as e:
             logger.error(f"read_file error: {e}")
-            return f"File padhne mein error bhai: {str(e)}"
+            return f"File padhne mein error boss: {str(e)}"
 
     # ═══════════════════════════════════════════
     # SKILL: edit_file
@@ -282,7 +282,7 @@ class FileManager:
     def edit_file(self, *args) -> str:
         try:
             if len(args) < 3:
-                return "Usage: edit_file:filepath:old_text:new_text bhai."
+                return "Usage: edit_file:filepath:old_text:new_text boss."
 
             filepath_str = args[0]
             old_text = args[1]
@@ -292,22 +292,22 @@ class FileManager:
             if not filepath.is_absolute():
                 filepath = self.search_dirs[0] / filepath_str
             if not filepath.exists():
-                return f"File nahi mila bhai: {filepath_str}"
+                return f"File nahi mila boss: {filepath_str}"
 
             content = filepath.read_text(encoding='utf-8', errors='replace')
             if old_text not in content:
-                return f"'{old_text[:30]}' text file mein nahi mila bhai."
+                return f"'{old_text[:30]}' text file mein nahi mila boss."
 
             new_content = content.replace(old_text, new_text, 1)
             backup_path = filepath.with_suffix(filepath.suffix + '.backup')
             filepath.rename(backup_path)
             filepath.write_text(new_content, encoding='utf-8')
 
-            return f"Edit ho gayi bhai. Backup: {backup_path.name}"
+            return f"Edit ho gayi boss. Backup: {backup_path.name}"
 
         except Exception as e:
             logger.error(f"edit_file error: {e}")
-            return f"File edit karne mein error bhai: {str(e)}"
+            return f"File edit karne mein error boss: {str(e)}"
 
     # ═══════════════════════════════════════════
     # SKILL: search_files
@@ -317,7 +317,7 @@ class FileManager:
         try:
             query = " ".join(args).strip() if args else ""
             if not query:
-                return "Kya search karna hai bhai?"
+                return "Kya search karna hai boss?"
 
             results = []
             for search_dir in self.search_dirs:
@@ -342,7 +342,7 @@ class FileManager:
                     continue
 
             if not results:
-                return f"'{query}' ke liye kuch nahi mila bhai."
+                return f"'{query}' ke liye kuch nahi mila boss."
 
             lines = [f"🔍 {len(results)} results for '{query}':"]
             for r in results[:10]:
@@ -350,13 +350,13 @@ class FileManager:
                 icon = self._get_file_icon(r)
                 lines.append(f"  {icon} {rel}")
             if len(results) > 10:
-                lines.append(f"  ... aur {len(results) - 10} results hain bhai")
+                lines.append(f"  ... aur {len(results) - 10} results hain boss")
 
             return "\n".join(lines)
 
         except Exception as e:
             logger.error(f"search_files error: {e}")
-            return f"Search mein error bhai: {str(e)}"
+            return f"Search mein error boss: {str(e)}"
 
 
 # Singleton

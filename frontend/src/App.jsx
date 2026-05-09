@@ -1,5 +1,5 @@
 /**
- * 🤖 JARVIS v2.0 — Immersive 3D AI Assistant
+ * 🤖 MAX v2.0 — Immersive 3D AI Assistant
  * Full integration: 3D Orb + Voice Pipeline + Text Chat + Skills
  * Built with Three.js, Framer Motion & Glassmorphism
  */
@@ -38,7 +38,7 @@ function blobToBase64(blob) {
 function App() {
   // ── State ──
   const [booting, setBooting] = useState(true)
-  const [jarvisState, setJarvisState] = useState('idle')
+  const [jarvisState, setMaxState] = useState('idle')
   const [messages, setMessages] = useState([])
   const [error, setError] = useState(null)
   const [chatOpen, setChatOpen] = useState(true)
@@ -60,11 +60,11 @@ function App() {
               { role: 'jarvis', content: data.text },
             ])
           }
-          setJarvisState('idle')
+          setMaxState('idle')
           break
 
         case 'status_update':
-          if (data.state) setJarvisState(data.state)
+          if (data.state) setMaxState(data.state)
           break
 
         case 'transcript':
@@ -83,7 +83,7 @@ function App() {
               { role: 'jarvis', content: data.text },
             ])
           }
-          setJarvisState('idle')
+          setMaxState('idle')
           break
 
         case 'response':
@@ -93,17 +93,17 @@ function App() {
               { role: 'jarvis', content: data.text },
             ])
           }
-          setJarvisState('idle')
+          setMaxState('idle')
           break
 
         case 'audio_response':
           if (data.audio) {
-            setJarvisState('speaking')
+            setMaxState('speaking')
             playAudio(data.audio, () => {
-              setJarvisState('idle')
+              setMaxState('idle')
             })
           } else {
-            setJarvisState('idle')
+            setMaxState('idle')
           }
           break
 
@@ -113,7 +113,7 @@ function App() {
 
         case 'error':
           setError(data.message || 'Unknown error')
-          setJarvisState('idle')
+          setMaxState('idle')
           setTimeout(() => setError(null), 5000)
           break
 
@@ -138,7 +138,7 @@ function App() {
       if (e.key === 'Escape') {
         console.log('🛑 Kill switch triggered')
         stopAudio()
-        setJarvisState('idle')
+        setMaxState('idle')
 
         try {
           const ws = new WebSocket('ws://localhost:8000/ws')
@@ -163,22 +163,22 @@ function App() {
     try {
       setError(null)
       await startRecording()
-      setJarvisState('listening')
+      setMaxState('listening')
     } catch (err) {
       setError('Microphone access denied. Please allow mic permissions.')
-      setJarvisState('idle')
+      setMaxState('idle')
     }
   }
 
   const handleMicRelease = async () => {
     if (!isRecording) return
-    setJarvisState('thinking')
+    setMaxState('thinking')
 
     try {
       const audioBlob = await stopRecording()
       if (!audioBlob || audioBlob.size < 512) {
         setError('Audio too short. Hold button longer.')
-        setJarvisState('idle')
+        setMaxState('idle')
         return
       }
 
@@ -209,16 +209,16 @@ function App() {
         ])
 
         if (result.audio) {
-          setJarvisState('speaking')
-          playAudio(result.audio, () => setJarvisState('idle'))
+          setMaxState('speaking')
+          playAudio(result.audio, () => setMaxState('idle'))
         } else {
-          setJarvisState('idle')
+          setMaxState('idle')
         }
       }
     } catch (err) {
       console.error('Voice error:', err)
       setError(err.message)
-      setJarvisState('idle')
+      setMaxState('idle')
     }
   }
 
@@ -228,7 +228,7 @@ function App() {
       return
 
     setMessages((prev) => [...prev, { role: 'user', content: text }])
-    setJarvisState('thinking')
+    setMaxState('thinking')
     setError(null)
 
     // Try WebSocket first
@@ -256,15 +256,15 @@ function App() {
         ])
 
         if (result.audio) {
-          setJarvisState('speaking')
-          playAudio(result.audio, () => setJarvisState('idle'))
+          setMaxState('speaking')
+          playAudio(result.audio, () => setMaxState('idle'))
         } else {
-          setJarvisState('idle')
+          setMaxState('idle')
         }
       } catch (err) {
         console.error('Chat error:', err)
         setError(err.message)
-        setJarvisState('idle')
+        setMaxState('idle')
       }
     }
   }
@@ -513,7 +513,7 @@ function App() {
               onClick={() => {
                 console.log('🛑 Kill switch triggered via UI');
                 stopAudio();
-                setJarvisState('idle');
+                setMaxState('idle');
                 try {
                   const ws = new WebSocket('ws://localhost:8000/ws');
                   ws.onopen = () => {
@@ -541,7 +541,7 @@ function App() {
               whileHover={{ background: 'rgba(255, 58, 58, 0.2)', scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              🛑 STOP JARVIS
+              🛑 STOP MAX
             </motion.button>
           )}
         </AnimatePresence>

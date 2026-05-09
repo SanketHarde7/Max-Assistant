@@ -88,7 +88,7 @@ export default function BootSequence({ onComplete }) {
         }}
       />
 
-      {/* JARVIS Title */}
+      {/* MAX Title */}
       {showTitle && (
         <h1
           style={{
@@ -106,7 +106,7 @@ export default function BootSequence({ onComplete }) {
             zIndex: 2,
           }}
         >
-          JARVIS
+          MAX
         </h1>
       )}
 
