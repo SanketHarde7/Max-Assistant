@@ -64,7 +64,7 @@ class Config:
     # ── TTS Settings ──
     TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-PrabhatNeural")
     TTS_RATE: str = os.getenv("TTS_RATE", "+10%")
-    TTS_PITCH: str = os.getenv("TTS_PITCH", "+0Hz")
+    TTS_PITCH: str = os.getenv("TTS_PITCH", "+1Hz")
 
     # ── AI Models ──
     LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
