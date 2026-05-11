@@ -44,6 +44,7 @@ DATA_SKILLS = {
     "email_check", "calendar_today", "calendar_week",
     "browser_scrape", "plugin_list", "list_apps",
     "sysinfo", "top_processes", "reminder_list",
+    "kb_search", "kb_list", "kb_stats", "kb_rebuild",
 }
 
 LONG_RESULT_SKILLS = {
@@ -219,6 +220,11 @@ class SkillsEngine:
             # Plugin
             "plugin_list":       self._skill_plugin_list,
             "plugin_reload":     self._skill_plugin_reload,
+            # Knowledge Base
+            "kb_search":         self._skill_kb_search,
+            "kb_rebuild":        self._skill_kb_rebuild,
+            "kb_list":           self._skill_kb_list,
+            "kb_stats":          self._skill_kb_stats,
         }
         try:
             pl = self.plugin_loader
@@ -757,6 +763,67 @@ class SkillsEngine:
         self.plugin_loader.reload()
         self.skills_registry = self._register_skills()
         return "Plugins reloaded."
+
+    # ════════════════════════════════════════════
+    # KNOWLEDGE BASE SKILLS  ← NEW
+    # ════════════════════════════════════════════
+
+    def _skill_kb_search(self, *args) -> str:
+        """Manual KB search — bypasses auto-injection to show raw results."""
+        query = " ".join(args).strip()
+        if not query:
+            return "What should I search in the knowledge base?"
+        try:
+            from modules.knowledge_base import get_knowledge_base
+            kb  = get_knowledge_base(self.config)
+            ctx = kb.query(query, top_k=3, min_similarity=0.20)
+            if ctx:
+                return ctx
+            return f"Nothing relevant found in knowledge base for: '{query}'."
+        except Exception as e:
+            return f"KB search failed: {e}"
+
+    def _skill_kb_rebuild(self, *args) -> str:
+        """Rebuild the full knowledge base index from .md files."""
+        try:
+            from modules.knowledge_base import get_knowledge_base
+            result = get_knowledge_base(self.config).build_index()
+            if "error" in result:
+                return result["error"]
+            files  = result.get("files", 0)
+            chunks = result.get("chunks", 0)
+            indexed = result.get("indexed", [])
+            msg = f"Knowledge base rebuilt: {files} file(s), {chunks} chunks indexed."
+            if indexed:
+                msg += "\n" + "\n".join(f"  • {f}" for f in indexed)
+            return msg
+        except Exception as e:
+            return f"KB rebuild failed: {e}"
+
+    def _skill_kb_list(self, *args) -> str:
+        """List all .md files in the knowledge folder."""
+        try:
+            from modules.knowledge_base import get_knowledge_base
+            return get_knowledge_base(self.config).list_documents()
+        except Exception as e:
+            return f"KB list failed: {e}"
+
+    def _skill_kb_stats(self, *args) -> str:
+        """Show knowledge base stats (chunks, files, paths)."""
+        try:
+            from modules.knowledge_base import get_knowledge_base
+            stats = get_knowledge_base(self.config).get_stats()
+            if not stats.get("ready"):
+                return f"Knowledge base not ready. {stats.get('error', '')}"
+            return (
+                f"Knowledge base stats:\n"
+                f"  • Indexed chunks : {stats['chunks']}\n"
+                f"  • .md files      : {stats['md_files']}\n"
+                f"  • KB folder      : {stats['kb_dir']}\n"
+                f"  • ChromaDB path  : {stats['chroma_dir']}"
+            )
+        except Exception as e:
+            return f"KB stats failed: {e}"
 
 
 # ══════════════════════════════════════════

@@ -157,6 +157,12 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:plugin_list]                    — List plugins
 [SKILL:plugin_reload]                  — Reload plugins
 
+─── KNOWLEDGE BASE ───
+[SKILL:kb_search:query]                — Search personal knowledge base (.md files)
+[SKILL:kb_rebuild]                     — Re-index all .md files in knowledge/ folder
+[SKILL:kb_list]                        — List documents in knowledge base
+[SKILL:kb_stats]                       — Knowledge base statistics
+
 ══════════════════════════════════════
 DECISION GUIDE — skill or no skill?
 ══════════════════════════════════════
@@ -164,6 +170,15 @@ DECISION GUIDE — skill or no skill?
 → Does the task open/control something on the PC? YES → appropriate skill
 → Is it casual conversation, a greeting, or a personal question? YES → reply directly, NO skill
 → Is it about you (MAX)? YES → reply directly, NO skill
+
+User: "What does my notes.md say about project X?"
+MAX: "Let me check the knowledge base. [SKILL:kb_search:project X]"
+
+User: "Rebuild knowledge base"
+MAX: "Re-indexing all docs now. [SKILL:kb_rebuild]"
+
+User: "What docs do I have in knowledge base?"
+MAX: "Here's what's indexed. [SKILL:kb_list]"
 
 CONTEXT: {memory_context}
 """

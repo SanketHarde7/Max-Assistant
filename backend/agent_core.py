@@ -1,8 +1,7 @@
 """
-agent_core.py — MAX v4.0
-Central orchestrator: manages LLM, Skills, Memory, TTS/STT.
-v4.1 fix: Gatekeeper integrated into response pipeline.
-         Banned words filtered before UI + TTS.
+agent_core.py — MAX v4.2
+Pipeline:
+  user text → fact extract → KB query → LLM → skill exec → gatekeeper → TTS
 """
 import asyncio
 import logging
@@ -19,61 +18,65 @@ logger = logging.getLogger("MAX.AGENT")
 
 
 def _force_open_app_skill(text: str) -> Optional[str]:
-    """Deterministic fallback for open-app requests when LLM misses skill tag."""
+    """Deterministic fallback for missed open-app skill tags."""
     patterns = [
         r"(?:\bopen\b|\bkhol(?:o|na|do)?\b|\blaunch\b)\s+([a-zA-Z0-9 ._+\-]{2,40})",
         r"([a-zA-Z0-9 ._+\-]{2,40})\s+(?:open\s+kar(?:o)?|khol(?:o|na|do)?|launch\s+kar(?:o)?)",
     ]
-    clean = text.strip().lower()
     for pat in patterns:
-        m = re.search(pat, clean, re.IGNORECASE)
+        m = re.search(pat, text.strip().lower(), re.IGNORECASE)
         if m:
             app_name = m.group(1).strip(" .,!?")
-            if app_name:
+            if app_name and len(app_name) > 1:
                 return f"[SKILL:open_app:{app_name}]"
     return None
 
 
 class MaxAgent:
-    """Central orchestrator for MAX."""
 
     def __init__(self):
-        self.config = config
-        self.memory = get_memory_manager(config)
-        self.skills = get_skills_engine(config)
+        self.config     = config
+        self.memory     = get_memory_manager(config)
+        self.skills     = get_skills_engine(config)
         self.gatekeeper = get_gatekeeper()
 
     async def process_text_input(self, text: str, use_tts: bool = True) -> Dict[str, Any]:
-        """Main entry point: user text → gatekeeper-filtered response."""
         try:
             await self.memory.add_message("user", text)
 
-            # Fact extraction
+            # Silent fact extraction
             try:
-                facts = await self.memory.extract_and_store_facts(text)
-                if facts:
-                    logger.info(f"Facts extracted: {facts}")
+                await self.memory.extract_and_store_facts(text)
             except Exception:
                 pass
 
             memory_context = self.memory.get_context()
 
-            # LLM call
-            result = await get_response(text, memory_context)
+            # ── Knowledge Base injection ──────────────────
+            kb_prefix = ""
+            try:
+                from modules.knowledge_base import get_knowledge_base
+                kb_ctx = get_knowledge_base(self.config).query(text, top_k=3, min_similarity=0.30)
+                if kb_ctx:
+                    kb_prefix = kb_ctx + "\n\n"
+                    logger.info("KB context injected into prompt")
+            except Exception as e:
+                logger.debug(f"KB query skipped: {e}")
+
+            combined_context = kb_prefix + memory_context
+
+            # ── LLM call ──────────────────────────────────
+            result       = await get_response(text, combined_context)
             llm_response = result["response"]
-            skill_tag = result.get("skill")
+            skill_tag    = result.get("skill") or _force_open_app_skill(text)
 
-            # Deterministic fallback if LLM missed open-app tag
-            if not skill_tag:
-                skill_tag = _force_open_app_skill(text)
-
+            # ── Skill execution ───────────────────────────
             if skill_tag:
-                skill_result = await self.skills.parse_and_execute(skill_tag, memory_context)
-
+                skill_result = await self.skills.parse_and_execute(skill_tag, combined_context)
                 if skill_result.get("executed"):
                     if skill_result.get("is_data_skill"):
                         summary = await get_response_with_skill_result(
-                            text, skill_result["result"], memory_context
+                            text, skill_result["result"], combined_context
                         )
                         final_response = summary["response"]
                         await self.memory.update_personality(
@@ -88,37 +91,26 @@ class MaxAgent:
                 final_response = llm_response
                 await self.memory.update_personality(len(final_response), "")
 
-            # ── GATEKEEPER: filter banned words from final response ──
-            filtered_response = self.gatekeeper.filter(final_response)
+            # ── Gatekeeper ────────────────────────────────
+            filtered = self.gatekeeper.filter(final_response)
 
-            await self.memory.add_message("assistant", filtered_response)
+            await self.memory.add_message("assistant", filtered)
             await self.memory.save_memory()
 
-            # TTS — extra aggressive filter (no emojis, no markdown)
+            # ── TTS ───────────────────────────────────────
             tts_path = ""
-            if use_tts and filtered_response:
-                tts_text = self.gatekeeper.filter_for_tts(filtered_response, max_chars=300)
+            if use_tts and filtered:
+                tts_text = self.gatekeeper.filter_for_tts(filtered, max_chars=300)
                 tts_path = await generate_tts(tts_text)
 
-            return {
-                "response": filtered_response,
-                "tts_path": tts_path,
-                "skill_used": skill_tag,
-            }
+            return {"response": filtered, "tts_path": tts_path, "skill_used": skill_tag}
 
         except Exception as e:
-            logger.error(f"process_text_input error: {e}")
-            return {
-                "response": "Kuch gadbad ho gayi. Dobara try karo.",
-                "tts_path": "",
-                "skill_used": None,
-            }
+            logger.error(f"process_text_input error: {e}", exc_info=True)
+            return {"response": "Something went wrong. Try again.", "tts_path": "", "skill_used": None}
 
     async def get_greeting(self) -> str:
-        """Generate time-aware greeting, filtered by gatekeeper."""
-        greeting = await get_greeting()
-        # Apply gatekeeper to greeting too
-        greeting = self.gatekeeper.filter(greeting)
+        greeting = self.gatekeeper.filter(await get_greeting())
         try:
             await self.memory.update_user_fact("last_greeting", greeting)
         except Exception:
@@ -126,11 +118,9 @@ class MaxAgent:
         return greeting
 
     async def clear_memory(self) -> str:
-        success = await self.memory.clear_memory()
-        return "Memory clear ho gayi." if success else "Memory clear nahi ho payi."
+        return "Memory cleared." if await self.memory.clear_memory() else "Could not clear memory."
 
 
-# Singleton
 _agent: Optional[MaxAgent] = None
 
 

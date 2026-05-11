@@ -53,6 +53,20 @@ class Config:
             dirs = [self.WORKSPACE_DIR, Path.home() / "Desktop", Path.home() / "Documents"]
         return dirs
 
+    # ── Knowledge Base Dirs — used by knowledge_indexer ──
+    @property
+    def KNOWLEDGE_DIRS(self) -> list:
+        raw = os.getenv("KNOWLEDGE_DIRS", "")
+        dirs = [Path(p.strip()) for p in raw.split(",") if p.strip()]
+        if not dirs:
+            dirs = [
+                self.PROJECT_ROOT / "knowleddge",
+                self.PROJECT_ROOT / "knowledge",
+                self.BACKEND_DIR / "knowleddge",
+                self.BACKEND_DIR / "knowledge",
+            ]
+        return dirs
+
     # ── Memory ──
     MEMORY_FILE: str = str(DATA_DIR / "memory.json")
     MEMORY_MAX_MESSAGES: int = int(os.getenv("MEMORY_MAX_MESSAGES", "20"))
@@ -60,6 +74,8 @@ class Config:
 
     # ── File Handling ──
     MAX_FILE_SIZE_KB: int = int(os.getenv("MAX_FILE_SIZE_KB", "5000"))
+    KNOWLEDGE_MAX_FILE_SIZE_KB: int = int(os.getenv("KNOWLEDGE_MAX_FILE_SIZE_KB", str(MAX_FILE_SIZE_KB)))
+    KNOWLEDGE_INDEX_FILE: Path = DATA_DIR / "knowledge_index.json"
 
     # ── TTS Settings ──
     TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-PrabhatNeural")

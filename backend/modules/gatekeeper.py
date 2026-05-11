@@ -2,7 +2,7 @@
 gatekeeper.py — MAX v4.2
 Post-processes LLM output before UI + TTS.
 - Removes banned words that still leak through
-- Gender correction: MAX is male (she/her → he/his)
+- Gender correction: MAX is female (he/him → she/her)
 - Strips leaked skill tags, markdown artifacts
 - TTS-specific cleanup (emojis, length trim)
 """
@@ -30,7 +30,7 @@ class ResponseGatekeeper:
 
     Rule order:
       1. Banned casual words
-      2. Gender correction (MAX is male)
+    2. Gender correction (MAX is female)
       3. Leaked skill tags / markdown
       4. Whitespace / punctuation cleanup
     """
@@ -50,16 +50,16 @@ class ResponseGatekeeper:
     ]
 
     # ── 2. Gender correction ─────────────────────────────
-    # MAX is male — fix any female pronouns used in self-reference.
+    # MAX is female — fix any male pronouns used in self-reference.
     # These patterns are conservative to avoid flipping pronouns
     # in quoted content or user-facing descriptions.
     _GENDER: List[Tuple[str, str]] = [
-        # "I am she" / "I'm she" type constructs
-        (r"\bI(?:'m| am) she\b",        "I am MAX"),
-        # "she said" / "she can" when referring to MAX in 3rd person
-        (r"\bshe(?= (is|was|can|will|has|said|told|knows|thinks|does|helped|handled))\b", "he"),
-        # Possessive "her" used for MAX
-        (r"\bher(?= (response|reply|answer|voice|name|output|code|suggestion|recommendation))\b", "his"),
+        # "I am he" / "I'm he" type constructs
+        (r"\bI(?:'m| am) he\b",        "I am MAX"),
+        # "he said" / "he can" when referring to MAX in 3rd person
+        (r"\bhe(?= (is|was|can|will|has|said|told|knows|thinks|does|helped|handled))\b", "she"),
+        # Possessive "his" used for MAX
+        (r"\bhis(?= (response|reply|answer|voice|name|output|code|suggestion|recommendation))\b", "her"),
     ]
 
     # ── 3. Artifact cleanup ───────────────────────────────

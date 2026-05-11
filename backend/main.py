@@ -32,7 +32,9 @@ from modules.calendar_agent import get_calendar_agent
 from modules.browser_agent import get_browser_agent
 from modules.smarthome_agent import get_smarthome_agent
 from modules.plugin_loader import get_plugin_loader
-
+from modules.knowledge_indexer import get_knowledge_indexer
+from modules.knowledge_base import get_knowledge_base
+import threading as _threading
 # ═══════════════════════════════════════════════════
 # LOGGING
 # ═══════════════════════════════════════════════════
@@ -61,6 +63,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _on_startup():
+    """
+    Runs once when FastAPI server starts.
+    1. Starts reminder background daemon (checks every 30s for due reminders)
+    2. Auto-indexes .md files from backend/knowledge/ into ChromaDB
+    """
+
+    # 1. Reminder daemon
+    try:
+        from modules.reminder_agent import start_reminder_daemon
+        start_reminder_daemon(config)
+        logger.info("✅ Reminder daemon started")
+    except Exception as e:
+        logger.warning(f"Reminder daemon failed: {e}")
+
+    # 2. Knowledge base auto-index (runs in background thread, non-blocking)
+    def _build_kb():
+        try:
+            from modules.knowledge_base import auto_index_on_startup
+            auto_index_on_startup(config)
+        except Exception as e:
+            logger.warning(f"KB auto-index: {e}")
+
+    _threading.Thread(target=_build_kb, daemon=True, name="MAX-KB-Init").start()
+
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        get_knowledge_indexer(config).refresh_if_needed()
+        logger.info("Knowledge index ready.")
+    except Exception as e:
+        logger.warning(f"Knowledge index startup failed: {e}")
 
 # ═══════════════════════════════════════════════════
 # PYDANTIC MODELS
@@ -648,6 +686,53 @@ async def chat(request: TextInput):
             logger.error(f"Chat REST TTS Read Error: {e}")
 
     return response_data
+
+
+class KBRebuildRequest(BaseModel):
+    pass
+
+
+class KBAddRequest(BaseModel):
+    filename: str
+    content:  str
+
+
+@app.post("/api/kb/rebuild")
+async def kb_rebuild():
+    """Rebuild full knowledge base index from .md files."""
+    kb     = get_knowledge_base(config)
+    result = kb.build_index()
+    return {"result": result}
+
+
+@app.get("/api/kb/list")
+async def kb_list():
+    """List all .md files in knowledge base."""
+    kb = get_knowledge_base(config)
+    return {"result": kb.list_documents()}
+
+
+@app.get("/api/kb/stats")
+async def kb_stats():
+    """Knowledge base statistics."""
+    kb = get_knowledge_base(config)
+    return {"result": kb.get_stats()}
+
+
+@app.get("/api/kb/search")
+async def kb_search(query: str = Query(...)):
+    """Manual knowledge base search."""
+    kb  = get_knowledge_base(config)
+    ctx = kb.query(query, top_k=5, min_similarity=0.20)
+    return {"result": ctx or "No relevant results found."}
+
+
+@app.post("/api/kb/add")
+async def kb_add(request: KBAddRequest):
+    """Add a single document to the knowledge base."""
+    kb     = get_knowledge_base(config)
+    result = kb.add_document(request.filename, request.content)
+    return {"result": result}
 
 # ═══════════════════════════════════════════════════
 # MAIN

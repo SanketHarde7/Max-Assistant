@@ -1,42 +1,64 @@
-"""
-requirements.txt — JARVIS v4.0
-Core dependencies. Optional ones marked — install only if needed.
-"""
-# ── Core ──
+# ================================================
+# requirements.txt - MAX v4.2
+# ================================================
+
+# -- Core server --
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 websockets>=12.0
 pydantic>=2.8.0
 python-dotenv>=1.0.0
 httpx>=0.27.0
+python-multipart>=0.0.9
 
-# ── AI / LLM ──
+# -- AI / LLM --
 groq>=0.4.0
 
-# ── TTS (Free, no API key) ──
+# -- TTS (free, no API key) --
 edge-tts>=6.1.0
 
-# ── Browser Automation ──
+# -- Knowledge Base / RAG --   (NEW)
+chromadb>=0.5.0               # local vector store (no cloud, persistent)
+sentence-transformers>=2.7.0  # all-MiniLM-L6-v2 embeddings (~90MB one-time download)
+
+# -- System info --             (NEW)
+psutil>=5.9.8                 # CPU, RAM, disk, battery, processes
+
+# -- Media control --           (NEW)
+keyboard>=0.13.5              # media keys (Windows/Linux) — run as admin on Linux
+
+# -- Browser automation --
 selenium>=4.15.0
 webdriver-manager>=4.0.0
 
-# ── PC Control (Optional) ──
-pyautogui>=0.9.54          # Mouse, keyboard, screenshot
-pygetwindow>=0.0.9         # Window listing
-pyperclip>=1.8.0           # Clipboard
-plyer>=2.1.0               # Desktop notifications
+# -- PC Control (optional) --
+pyautogui>=0.9.54             # mouse, keyboard, screenshot
+pygetwindow>=0.0.9            # window listing (Windows)
+pyperclip>=1.8.0              # clipboard
+plyer>=2.1.0                  # desktop notifications (timer + reminders)
 
-# ── Windows-only PC Control ──
-pycaw>=20230407            # Volume control
-pywin32>=306               # WMI, brightness, lock
-wmi>=1.5.1                 # Windows Management Instrumentation
+# -- Windows-only PC control --
+# pycaw>=20230407             # volume control  (Windows only)
+# pywin32>=306                # WMI/brightness/lock (Windows only)
+# wmi>=1.5.1                  # brightness via WMI (Windows only)
 
-# ── WhatsApp ──
-pywhatkit>=5.4.0           # WhatsApp messages
+# -- WhatsApp --
+# pywhatkit>=5.4.0            # WhatsApp messages (optional)
 
-# ── Smart Home ──
-broadlink>=0.18.0          # IR Blaster (RM Mini 3 / Pro)
-tinytuya>=1.13.1           # Tuya WiFi devices
+# -- Smart Home --
+# broadlink>=0.18.0           # IR Blaster RM Mini 3/Pro (optional)
+# tinytuya>=1.13.1            # Tuya WiFi devices (optional)
 
-# ── Utilities ──
-python-multipart>=0.0.9    # File uploads
+# ================================================
+# INSTALL ORDER (first time):
+#
+# pip install fastapi uvicorn[standard] websockets pydantic python-dotenv httpx
+# pip install groq edge-tts
+# pip install chromadb sentence-transformers   (downloads ~90MB model once)
+# pip install psutil keyboard
+# pip install pyautogui pygetwindow pyperclip plyer
+# pip install selenium webdriver-manager
+#
+# Windows extras:
+# pip install pycaw pywin32 wmi
+# ================================================
