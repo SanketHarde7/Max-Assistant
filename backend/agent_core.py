@@ -1,7 +1,8 @@
 """
 agent_core.py — MAX v4.0
 Central orchestrator: manages LLM, Skills, Memory, TTS/STT.
-Added: Personality evolution, fact extraction, friendly tone.
+v4.1 fix: Gatekeeper integrated into response pipeline.
+         Banned words filtered before UI + TTS.
 """
 import asyncio
 import logging
@@ -12,6 +13,7 @@ from modules.llm import get_response, get_response_with_skill_result, get_greeti
 from modules.skills import get_skills_engine
 from modules.memory import get_memory_manager
 from modules.tts import generate_tts
+from modules.gatekeeper import get_gatekeeper
 
 logger = logging.getLogger("MAX.AGENT")
 
@@ -19,8 +21,8 @@ logger = logging.getLogger("MAX.AGENT")
 def _force_open_app_skill(text: str) -> Optional[str]:
     """Deterministic fallback for open-app requests when LLM misses skill tag."""
     patterns = [
-        r"(?:\bopen\b|\bkhol(?:o|na|do)?\b|\blaunch\b)\s+([a-zA-Z0-9 ._+-]{2,40})",
-        r"([a-zA-Z0-9 ._+-]{2,40})\s+(?:open\s+kar(?:o)?|khol(?:o|na|do)?\s+|launch\s+kar(?:o)?)",
+        r"(?:\bopen\b|\bkhol(?:o|na|do)?\b|\blaunch\b)\s+([a-zA-Z0-9 ._+\-]{2,40})",
+        r"([a-zA-Z0-9 ._+\-]{2,40})\s+(?:open\s+kar(?:o)?|khol(?:o|na|do)?|launch\s+kar(?:o)?)",
     ]
     clean = text.strip().lower()
     for pat in patterns:
@@ -39,14 +41,14 @@ class MaxAgent:
         self.config = config
         self.memory = get_memory_manager(config)
         self.skills = get_skills_engine(config)
+        self.gatekeeper = get_gatekeeper()
 
     async def process_text_input(self, text: str, use_tts: bool = True) -> Dict[str, Any]:
-        """Main entry point: user text → response."""
+        """Main entry point: user text → gatekeeper-filtered response."""
         try:
-            # Save user message
             await self.memory.add_message("user", text)
 
-            # Extract facts from user text
+            # Fact extraction
             try:
                 facts = await self.memory.extract_and_store_facts(text)
                 if facts:
@@ -54,51 +56,52 @@ class MaxAgent:
             except Exception:
                 pass
 
-            # Build memory context
             memory_context = self.memory.get_context()
 
-            # Get LLM response
+            # LLM call
             result = await get_response(text, memory_context)
             llm_response = result["response"]
             skill_tag = result.get("skill")
+
+            # Deterministic fallback if LLM missed open-app tag
             if not skill_tag:
                 skill_tag = _force_open_app_skill(text)
 
             if skill_tag:
-                # Execute skill
                 skill_result = await self.skills.parse_and_execute(skill_tag, memory_context)
 
                 if skill_result.get("executed"):
                     if skill_result.get("is_data_skill"):
-                        # Get 2nd pass summary for DATA skills
                         summary = await get_response_with_skill_result(
                             text, skill_result["result"], memory_context
                         )
                         final_response = summary["response"]
-                        # Update personality
-                        await self.memory.update_personality(len(final_response), skill_result.get("skill_name", ""))
+                        await self.memory.update_personality(
+                            len(final_response), skill_result.get("skill_name", "")
+                        )
                     else:
                         final_response = llm_response
                 else:
-                    # Skill failed
-                    error = skill_result.get("error", "Skill failed boss")
+                    error = skill_result.get("error", "Skill failed")
                     final_response = f"{llm_response} (Error: {error[:60]})"
             else:
                 final_response = llm_response
-                # Update personality on normal response
                 await self.memory.update_personality(len(final_response), "")
 
-            # Save assistant response
-            await self.memory.add_message("assistant", final_response)
+            # ── GATEKEEPER: filter banned words from final response ──
+            filtered_response = self.gatekeeper.filter(final_response)
+
+            await self.memory.add_message("assistant", filtered_response)
             await self.memory.save_memory()
 
-            # TTS
+            # TTS — extra aggressive filter (no emojis, no markdown)
             tts_path = ""
-            if use_tts and final_response:
-                tts_path = await generate_tts(final_response[:300])
+            if use_tts and filtered_response:
+                tts_text = self.gatekeeper.filter_for_tts(filtered_response, max_chars=300)
+                tts_path = await generate_tts(tts_text)
 
             return {
-                "response": final_response,
+                "response": filtered_response,
                 "tts_path": tts_path,
                 "skill_used": skill_tag,
             }
@@ -106,15 +109,16 @@ class MaxAgent:
         except Exception as e:
             logger.error(f"process_text_input error: {e}")
             return {
-                "response": "Kuch gadbad ho gayi boss. Dobara try karo.",
+                "response": "Kuch gadbad ho gayi. Dobara try karo.",
                 "tts_path": "",
                 "skill_used": None,
             }
 
     async def get_greeting(self) -> str:
-        """Generate time-aware greeting."""
+        """Generate time-aware greeting, filtered by gatekeeper."""
         greeting = await get_greeting()
-        # Track last greeting
+        # Apply gatekeeper to greeting too
+        greeting = self.gatekeeper.filter(greeting)
         try:
             await self.memory.update_user_fact("last_greeting", greeting)
         except Exception:
@@ -122,9 +126,8 @@ class MaxAgent:
         return greeting
 
     async def clear_memory(self) -> str:
-        """Reset conversation history."""
         success = await self.memory.clear_memory()
-        return "Memory clear ho gayi boss." if success else "Memory clear nahi ho payi boss."
+        return "Memory clear ho gayi." if success else "Memory clear nahi ho payi."
 
 
 # Singleton

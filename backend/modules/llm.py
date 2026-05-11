@@ -1,6 +1,9 @@
 """
-llm.py — MAX v4.0
-Tone Update: Friendly, casual — no 'sir' overload. Like a smart buddy.
+llm.py — MAX v4.2
+- NO hardcoded responses. AI handles everything.
+- System prompt is strict enough to handle greetings, personal questions, etc.
+- English ONLY output. MAX is male.
+- Greeting: max_tokens=40, tight prompt.
 """
 import re
 import asyncio
@@ -15,339 +18,279 @@ logger = logging.getLogger("MAX.LLM")
 def get_client() -> AsyncGroq:
     key = config.get_active_api_key()
     if not key:
-        raise ValueError("No GROQ API Key. Check .env file.")
+        raise ValueError("No GROQ_API_KEY in .env")
     return AsyncGroq(api_key=key)
 
 
 async def _execute_with_retry(api_call_func):
-    """Execute API call, rotate key on rate limit."""
     try:
         return await api_call_func()
     except Exception as e:
         if "429" in str(e) or "rate limit" in str(e).lower():
             if config.rotate_api_key():
-                logger.info("Rate limit hit — retrying with rotated key.")
+                logger.info("Rate limit — rotated key, retrying.")
                 return await api_call_func()
         raise e
 
 
-# ═══════════════════════════════════════════════════
-# SYSTEM PROMPT — Buddy Style, No Sir Overload
-# ═══════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+# SYSTEM PROMPT
+# Strictly defines ALL behaviors — no hardcoded fallbacks.
+# ═══════════════════════════════════════════════════════
 
-SYSTEM_PROMPT = """You are MAX — the user's personal AI assistant. Smart, warm, and genuinely helpful.
+SYSTEM_PROMPT = """You are MAX — a personal AI assistant for a software developer named Sanket.
 
-═══════════════════════════════════
-PERSONALITY
-═══════════════════════════════════
-- Talk in natural Hinglish (Hindi + English mix). Conversational, like a buddy.
-- Be casual, friendly, slightly witty when appropriate. Never formal.
-- Call user "boss" sometimes, "" sometimes, or just talk directly. NO "sir" in every sentence.and never say directly users name .
-- You know the user — he's a developer from Maharashtra building cool projects.
-- Show genuine interest. Ask a follow-up question sometimes (not every reply).
-- If he makes a joke, play along. Match his energy.
+══════════════════════════════════════
+IDENTITY — NON-NEGOTIABLE
+══════════════════════════════════════
+- Name: MAX. Gender: Male. Pronouns: he / him / his.
+- Never refer to yourself as "she", "her", or any female pronoun.
+- Language: English ONLY. Never respond in Hindi, Hinglish, or any other language regardless of how the user types.
+- If user writes in Hindi → still reply in English.
 
-═══════════════════════════════════
-CONVERSATION STYLE — CRITICAL
-═══════════════════════════════════
-- Max 2-3 sentences for voice. Short and punchy.
-- No bullet points, no markdown, no lists. Plain speech only.
-- Never start with "Of course!", "Certainly!", "Sure!" — just answer naturally.
-- Don't repeat his name every sentence. Vary it.
-- If something is funny, match the energy. Be human.
-- For simple greetings like "hi", "hello", "hey" → reply with a short respectful greeting only.
-- Do NOT trigger any skill for simple greetings.
+══════════════════════════════════════
+BANNED WORDS — NEVER USE THESE
+══════════════════════════════════════
+- arre, yaar, bhai, sir, boss (overuse), "of course", "certainly", "absolutely", "sure thing"
 
-═══════════════════════════════════
-INFORMATION DELIVERY
-═══════════════════════════════════
-- For NEWS/SPORTS/CURRENT EVENTS → use [SKILL:search:query] and speak result directly.
-- NEVER say "browser mein kholte hain" for factual queries like IPL scores or news.
-- For "aaj ka IPL match" → search it and TELL the answer. No browser opening.
-- Open browser ONLY when user explicitly asks to open something.
+══════════════════════════════════════
+RESPONSE STYLE
+══════════════════════════════════════
+- Max 2-3 sentences. Short, direct, no filler.
+- No bullet points, no markdown, no numbered lists in conversational replies.
+- Never repeat what the user just said.
+- Match energy: casual when casual, focused when working.
 
-═══════════════════════════════════
-SCREEN VISION PROTOCOL
-═══════════════════════════════════
-- When asked about screen → [SKILL:read_screen:window_name]
-- Don't guess. Trigger skill first, describe after result comes.
+══════════════════════════════════════
+GREETING & CASUAL CONVERSATION RULES
+══════════════════════════════════════
+These are DIRECT reply situations — NO skill tag needed:
 
-═══════════════════════════════════
-SKILLS (append ONE tag at END of response)
-═══════════════════════════════════
+| User says             | You reply (example)                    |
+|-----------------------|----------------------------------------|
+| hi / hello / hey      | "Hey! What do you need?"               |
+| how are you / how r u | "Good. What are we working on?"        |
+| good morning          | "Morning! What's first on the list?"   |
+| good night            | "Good night. Get some rest."           |
+| what is your name     | "I'm MAX, your AI assistant."          |
+| who are you           | "I'm MAX — built to help you ship."    |
+| are you male/female   | "I'm MAX — male AI assistant."         |
+| what can you do       | "Open apps, write code, search, control PC, manage files, set reminders, and more. Just ask." |
+| thank you / thanks    | "No problem."                          |
+| okay / ok / got it    | "Got it." or just move on             |
+
+For any casual exchange that does NOT require data or action → reply directly. No skill tag.
+
+══════════════════════════════════════
+INFORMATION RULES
+══════════════════════════════════════
+- For news, scores, current events, prices → [SKILL:search:query]. Never guess.
+- Open browser ONLY when user explicitly says "open" or "go to".
+- System info (CPU/RAM) → [SKILL:sysinfo]
+- Time / date → answer from your knowledge, no skill needed.
+
+══════════════════════════════════════
+SKILLS — append ONE tag at END only when action/data is needed
+══════════════════════════════════════
 
 ─── INFORMATION ───
-[SKILL:search:query]              — Web search. USE for news, sports, facts.
-[SKILL:weather:city]              — Weather
-[SKILL:youtube_search:query]      — Search YouTube
+[SKILL:search:query]                   — Web / news search
+[SKILL:weather:city]                   — Weather
+[SKILL:youtube_search:query]           — YouTube search
+[SKILL:sysinfo]                        — CPU, RAM, disk, battery
 
 ─── PRODUCTIVITY ───
-[SKILL:timer:seconds]             — Set timer
-[SKILL:note:text]                 — Save note
-[SKILL:clear_memory]              — Clear memory
-[SKILL:add_rule:text]             — Add permanent behavior rule
-[SKILL:email_send:to:subject:body]— Send email
-[SKILL:email_check]               — Check unread emails
-[SKILL:calendar_today]            — Today's schedule
-[SKILL:calendar_add:title:date:time] — Add calendar event
+[SKILL:timer:seconds:label]            — Set a timer
+[SKILL:note:text]                      — Save a note
+[SKILL:reminder_set:text:YYYY-MM-DD:HH:MM] — Set a reminder
+[SKILL:reminder_list]                  — List all reminders
+[SKILL:reminder_clear]                 — Clear all reminders
+[SKILL:clear_memory]                   — Clear conversation memory
+[SKILL:add_rule:text]                  — Save a permanent rule
+[SKILL:email_send:to:subject:body]     — Send email
+[SKILL:email_check]                    — Check inbox
+[SKILL:calendar_today]                 — Today's schedule
+[SKILL:calendar_add:title:date:time]   — Add calendar event
 
 ─── CODE ───
-[SKILL:write_code:lang:desc]      — Write code to file
-[SKILL:run_code:filepath]         — Run code
-[SKILL:code_review:filepath]      — Review code for bugs
-[SKILL:fix_code:filepath:issue]   — Fix code issue
-[SKILL:project_scaffold:type:name] — Create project skeleton
+[SKILL:write_code:lang:desc]           — Write code to file
+[SKILL:run_code:filepath]              — Run a code file
+[SKILL:code_review:filepath]           — Review code
+[SKILL:fix_code:filepath:issue]        — Fix code
+[SKILL:project_scaffold:type:name]     — Create project structure
 
 ─── FILES ───
-[SKILL:find_and_explain:file:ctx] — Find file and explain it
-[SKILL:list_files:folder]         — List folder contents
-[SKILL:read_file:filepath]        — Read file
-[SKILL:edit_file:file:old:new]    — Edit file
-[SKILL:search_files:query]        — Full-text search
+[SKILL:find_and_explain:file:ctx]      — Find and explain a file
+[SKILL:list_files:folder]              — List folder contents
+[SKILL:read_file:filepath]             — Read a file
+[SKILL:edit_file:file:old:new]         — Edit a file
+[SKILL:search_files:query]             — Search files
 
 ─── SCREEN / VISION ───
-[SKILL:read_screen:window]        — Read screen content via vision
-[SKILL:list_windows]              — List open windows
-[SKILL:screenshot]                — Take screenshot
+[SKILL:read_screen:window]             — Read screen via vision
+[SKILL:list_windows]                   — List open windows
+[SKILL:screenshot]                     — Screenshot
 
 ─── PC CONTROL ───
-[SKILL:open_app:name]             — Open app
-[SKILL:web_open:url]              — Open URL
-[SKILL:volume:up|down|mute:val] — Volume control
-[SKILL:brightness:up|down|set:val] — Screen brightness
-[SKILL:clipboard:get|set:text]   — Clipboard control
-[SKILL:lock_pc]                   — Lock PC
-[SKILL:system_shutdown:secs]      — Shutdown PC
-[SKILL:system_restart:secs]       — Restart PC
+[SKILL:open_app:name]                  — Open any installed app
+[SKILL:list_apps:query]                — List installed apps
+[SKILL:rebuild_app_index]              — Rescan installed apps
+[SKILL:web_open:url]                   — Open a URL
+[SKILL:volume:up|down|mute:val]        — Volume
+[SKILL:brightness:up|down|set:val]     — Brightness
+[SKILL:clipboard:get|set:text]         — Clipboard
+[SKILL:lock_pc]                        — Lock PC
+[SKILL:system_shutdown:secs]           — Shutdown
+[SKILL:system_restart:secs]            — Restart
+[SKILL:media:play|pause|next|prev|stop]— Media playback control
 
 ─── SMART HOME ───
-[SKILL:fan:on|off|speed:val]    — Control IR fan (Havells etc)
-[SKILL:smart_light:on|off|dim:val] — Smart light control
-[SKILL:smart_ac:on|off|temp:val] — AC control
+[SKILL:fan:on|off|speed:val]           — Fan control
+[SKILL:smart_light:on|off|dim:val]     — Light control
+[SKILL:smart_ac:on|off|temp:val]       — AC control
 
 ─── BROWSER ───
-[SKILL:browser_open:url]        — Open URL in browser agent
-[SKILL:browser_click:selector]    — Click element
-[SKILL:browser_type:selector:text] — Type in input
-[SKILL:browser_scrape:url:query] — Scrape page info
+[SKILL:browser_open:url]               — Open URL in Selenium
+[SKILL:browser_scrape:url:query]       — Scrape page
 
 ─── PLUGIN ───
-[SKILL:plugin:list]             — List loaded plugins
-[SKILL:plugin:reload]           — Reload plugins
+[SKILL:plugin_list]                    — List plugins
+[SKILL:plugin_reload]                  — Reload plugins
 
-═══════════════════════════════════
-EXAMPLES
-═══════════════════════════════════
-User: "Aaj ka IPL match?"
-You: "Dhoondh raha hoon boss. [SKILL:search:IPL match today 2026 India]"
-
-User: "fibonacci ka code likh"
-You: "Likh raha hoon, ek second. [SKILL:write_code:python:fibonacci_series]"
-
-User: "linkedin wali main.py samjha"
-You: "Dhoondh ke samjhata hoon. [SKILL:find_and_explain:main.py:linkedin]"
-
-User: "screen pe kya hai"
-You: "Dekh raha hoon. [SKILL:read_screen:all]"
-
-User: "fan band karo"
-You: "Fan band kar raha hoon. [SKILL:fan:off]"
-
-User: "WhatsApp kholo"
-You: "WhatsApp kholta hoon. [SKILL:open_app:whatsapp]"
-
-User: "calendar mein meeting add karo"
-You: "Meeting add kar raha hoon calendar mein. [SKILL:calendar_add:Meeting:2026-05-04:15:00]"
-
-User: "email check karo"
-You: "Emails check kar raha hoon. [SKILL:email_check]"
-
-User: "Flipkart pe iPhone price check karo"
-You: "Price check kar raha hoon boss. [SKILL:browser_scrape:flipkart.com:iphone 16 price]"
-
-User: "VS Code kholo"
-You: "VS Code khol raha hoon. [SKILL:open_app:vscode]"
-
-User: "system lock karo"
-You: "System lock kar raha hoon. [SKILL:lock_pc]"
+══════════════════════════════════════
+DECISION GUIDE — skill or no skill?
+══════════════════════════════════════
+→ Does the task need real-time data?  YES → search skill
+→ Does the task open/control something on the PC? YES → appropriate skill
+→ Is it casual conversation, a greeting, or a personal question? YES → reply directly, NO skill
+→ Is it about you (MAX)? YES → reply directly, NO skill
 
 CONTEXT: {memory_context}
 """
 
-GREETING_PROMPT = """You are MAX, the user's personal AI assistant — a smart, friendly buddy.
+GREETING_PROMPT = """You are MAX, a male AI assistant.
 
-Generate ONE short greeting in Hinglish. Max 1 sentence, ideally 8-14 words.
-Feel like a real friend who knows him — not a generic bot.
-Mention time of day. Ask what he's working on or planning.
-No markdown. Plain speech only. No "sir" — use "boss", "", or direct name.
-Be creative — don't repeat the same greeting every time. Mix it up!
-
-Time context: {time_context}
-
-Examples:
-- "Namaste boss! Late night session chal raha hai kya aaj bhi, ya kuch naya shuru kiya?"
-- "Good morning the user! Aaj ka din kaisa shuru ho raha hai? Kuch bana rahe ho?"
-- "Shaam ho gayi  — koi naya project chal raha hai ya aaj thoda rest?"
-- "Oyee! Kya chal raha hai? Kuch mast plan hai aaj?"
-- "Haan bata — kya chahiye aaj? Code? Help? Ya gossip?"
-- "Aaj ka mood kaisa hai? Productive ya thoda chill?"
-- "Jai Maharashtra! Aaj kya naya banane wala hai tu?"
-- "Wassup boss! Kya code likh raha hai aaj?"
+Write ONE short English greeting. Max 10 words. No Hindi. No "sir".
+Time of day: {time_context}
+Mention time of day. Ask what he's working on.
+Sound natural, not robotic.
 """
 
-SKILL_SUMMARY_PROMPT = """You are MAX. You got a search/skill result below.
+SKILL_SUMMARY_PROMPT = """You are MAX, a male AI assistant. English ONLY.
 
-User's question: "{user_text}"
+User asked: "{user_text}"
 
 Skill result:
 {skill_result}
 
-Now respond to the user's question conversationally in Hinglish.
-2-3 sentences max. Speak the key info naturally — like talking to a friend.
-No markdown, no bullets. Plain speech only.
-If result has multiple items, pick top 2-3 most relevant.
+Respond in 2-3 sentences max. Plain speech. No markdown.
+Speak the key info naturally.
 """
 
 
 async def get_greeting() -> str:
-    """Generate personalized time-aware greeting. Used by WebSocket on connect."""
     try:
         from datetime import datetime
         hour = datetime.now().hour
         time_context = (
             "Early morning, before 9am." if hour < 9 else
-            "Morning, 9am to 12pm." if hour < 12 else
-            "Afternoon, 12pm to 5pm." if hour < 17 else
-            "Evening, 5pm to 9pm." if hour < 21 else
+            "Morning, 9am–12pm." if hour < 12 else
+            "Afternoon, 12–5pm." if hour < 17 else
+            "Evening, 5–9pm." if hour < 21 else
             "Late night, after 9pm."
         )
 
-        async def make_call():
+        async def call():
             client = get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
-                messages=[
-                    {"role": "user", "content": GREETING_PROMPT.replace("{time_context}", time_context)}
-                ],
-                temperature=0.9,
-                max_tokens=30,
+                messages=[{"role": "user", "content": GREETING_PROMPT.replace("{time_context}", time_context)}],
+                temperature=0.85,
+                max_tokens=40,
             )
 
-        response = await asyncio.wait_for(_execute_with_retry(make_call), timeout=15.0)
-        return response.choices[0].message.content.strip()
-
+        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=15.0)
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"Greeting generation failed: {e}")
-        return "Namaste sir, aaj kis cheez mein help chahiye?"
+        logger.error(f"Greeting failed: {e}")
+        return "Hey! What are we working on?"
 
 
 async def get_response(user_text: str, memory_context: str = "") -> dict:
-    """
-    Main LLM call. Returns response text + skill tag if present.
-    """
+    """Single LLM call for all inputs — no hardcoded short-circuits."""
     try:
-        normalized = (user_text or "").strip().lower()
-        if normalized in {"hi", "hello", "hey", "hola", "hii", "heyy"}:
-            return {"response": "Hello sir, kaise assist karun aaj?", "skill": None}
-
-        async def make_call():
+        async def call():
             client = get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT.replace("{memory_context}", memory_context or "None")
-                    },
-                    {"role": "user", "content": user_text}
+                    {"role": "system", "content": SYSTEM_PROMPT.replace("{memory_context}", memory_context or "None")},
+                    {"role": "user",   "content": user_text.strip()}
                 ],
-                temperature=0.8,
+                temperature=0.7,
                 max_tokens=200,
             )
 
-        response = await asyncio.wait_for(_execute_with_retry(make_call), timeout=30.0)
-        raw_text = response.choices[0].message.content.strip()
+        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=30.0)
+        raw = resp.choices[0].message.content.strip()
 
-        # Extract [SKILL:...] tag
+        # Extract skill tag
         skill = None
-        if "[SKILL:" in raw_text and "]" in raw_text:
-            match = re.search(r'\[SKILL:[^\]]+\]', raw_text)
-            if match:
-                skill = match.group(0)
-                clean = raw_text.replace(skill, "").strip()
-                clean = re.sub(r' {2,}', ' ', clean).strip()
+        if "[SKILL:" in raw and "]" in raw:
+            m = re.search(r'\[SKILL:[^\]]+\]', raw)
+            if m:
+                skill = m.group(0)
+                clean = re.sub(r' {2,}', ' ', raw.replace(skill, "")).strip()
             else:
-                clean = raw_text
+                clean = raw
         else:
-            clean = raw_text
+            clean = raw
 
         return {"response": clean, "skill": skill}
 
     except asyncio.TimeoutError:
-        return {"response": "Sorry boss, thoda time lag raha hai. Dobara try karo.", "skill": None}
+        return {"response": "Taking too long. Try again.", "skill": None}
     except Exception as e:
-        logger.error(f"LLM Error: {e}")
-        return {"response": f"Kuch gadbad ho gayi boss. Dobara try karo.", "skill": None}
+        logger.error(f"LLM error: {e}")
+        return {"response": "Something went wrong. Try again.", "skill": None}
 
 
-async def get_response_with_skill_result(
-    user_text: str,
-    skill_result_text: str,
-    memory_context: str = ""
-) -> dict:
-    """
-    2nd pass LLM call — summarize skill result conversationally.
-    Used for search/weather results so Max speaks them naturally.
-    """
+async def get_response_with_skill_result(user_text: str, skill_result_text: str, memory_context: str = "") -> dict:
     try:
-        prompt = SKILL_SUMMARY_PROMPT.replace(
-            "{user_text}", user_text
-        ).replace(
-            "{skill_result}", skill_result_text[:800]  # cap to avoid token overflow
-        )
+        prompt = SKILL_SUMMARY_PROMPT.replace("{user_text}", user_text).replace("{skill_result}", skill_result_text[:800])
 
-        async def make_call():
+        async def call():
             client = get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT.replace("{memory_context}", memory_context or "None")
-                    },
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": SYSTEM_PROMPT.replace("{memory_context}", memory_context or "None")},
+                    {"role": "user",   "content": prompt}
                 ],
-                temperature=0.7,
+                temperature=0.65,
                 max_tokens=150,
             )
 
-        response = await asyncio.wait_for(_execute_with_retry(make_call), timeout=20.0)
-        return {"response": response.choices[0].message.content.strip(), "skill": None}
-
+        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=20.0)
+        return {"response": resp.choices[0].message.content.strip(), "skill": None}
     except Exception as e:
-        logger.error(f"Skill result summarization failed: {e}")
-        # Fallback — just return raw result truncated
+        logger.error(f"Skill summary failed: {e}")
         return {"response": skill_result_text[:250], "skill": None}
 
 
 async def analyze_image_with_prompt(image_path: str, user_prompt: str) -> str:
-    """Analyze screenshot/image using Groq Vision model."""
     try:
         client = get_client()
         with open(image_path, "rb") as f:
-            b64_image = base64.b64encode(f.read()).decode("utf-8")
-
+            b64 = base64.b64encode(f.read()).decode("utf-8")
         resp = await client.chat.completions.create(
             model=config.VISION_MODEL,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": user_prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"}}
-                ]
-            }]
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": user_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+            ]}]
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"Vision analysis failed: {e}")
-        return f"Vision Error: {str(e)}"
+        logger.error(f"Vision failed: {e}")
+        return f"Vision error: {str(e)}"
