@@ -54,6 +54,11 @@ class BrowserAgent:
         status = self._ensure_driver()
         if status != "ok":
             return status
+        url = url.strip()
+        # Agar dot (.) nahi hai, toh automatically .com add kar do
+        if "." not in url and not url.startswith(("http://", "https://")):
+            url = f"{url}.com"
+        
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         try:

@@ -44,8 +44,7 @@ DATA_SKILLS = {
     "email_check", "calendar_today", "calendar_week",
     "browser_scrape", "plugin_list", "list_apps",
     "sysinfo", "top_processes", "reminder_list",
-    "kb_search", "kb_list", "kb_stats", "kb_rebuild",
-}
+    "kb_search", "kb_list", "kb_stats", "kb_rebuild",}
 
 LONG_RESULT_SKILLS = {
     "find_and_explain", "list_files", "read_file",
@@ -161,6 +160,7 @@ class SkillsEngine:
             "note":              self._skill_note,
             "search":            self._skill_web_search,
             "youtube_search":    self._skill_youtube_search,
+            "youtube_play":      self._skill_youtube_play,
             "time_now":          self._skill_time_now,
             "date_today":        self._skill_date_today,
             "clear_memory":      self._skill_clear_memory,
@@ -634,6 +634,8 @@ class SkillsEngine:
             al = action.lower()
             if system == "Windows":
                 try:
+                    import comtypes
+                    comtypes.CoInitialize()
                     from ctypes import cast, POINTER
                     from comtypes import CLSCTX_ALL
                     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
@@ -645,6 +647,7 @@ class SkillsEngine:
                     elif al == "down": vol.SetMasterVolumeLevelScalar(max(0.0, vol.GetMasterVolumeLevelScalar() - step), None)
                     elif al == "mute": vol.SetMute(not vol.GetMute(), None)
                     elif al == "set":  vol.SetMasterVolumeLevelScalar(min(1.0, int(value) / 100.0), None)
+                    comtypes.CoUninitialize()   
                     return f"Volume {al}."
                 except ImportError as e:
                     return f"Volume control missing dependency: {e}. Try: pip install pycaw comtypes"
@@ -710,7 +713,21 @@ class SkillsEngine:
             return "PC locked."
         except Exception as e:
             return f"Lock failed: {str(e)[:120]}"
-
+    
+    def _skill_youtube_play(self, *args) -> str:
+        """Directly plays the first video matching the query on YouTube."""
+        if not PYWHATKIT_AVAILABLE:
+            return "YouTube play needs: pip install pywhatkit"
+        query = " ".join(args).strip()
+        if not query:
+            return "What should I play on YouTube?"
+        try:
+            # Ye direct video open karke play kar dega
+            pywhatkit.playonyt(query)
+            return f"Playing '{query}' on YouTube."
+        except Exception as e:
+            return f"YouTube play failed: {e}"
+    
     def _skill_whatsapp_message(self, contact: str = "", message: str = "", **kw) -> str:
         if not PYWHATKIT_AVAILABLE: return "WhatsApp needs: pip install pywhatkit"
         if not contact: return "Provide contact number (+91 format)."
