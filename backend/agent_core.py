@@ -83,7 +83,8 @@ class MaxAgent:
                             len(final_response), skill_result.get("skill_name", "")
                         )
                     else:
-                        final_response = llm_response
+                        skill_text = skill_result.get("result", "").strip()
+                        final_response = skill_text or llm_response
                 else:
                     error = skill_result.get("error", "Skill failed")
                     final_response = f"{llm_response} (Error: {error[:60]})"

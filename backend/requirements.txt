@@ -38,7 +38,7 @@ pyperclip>=1.8.0              # clipboard
 plyer>=2.1.0                  # desktop notifications (timer + reminders)
 
 # -- Windows-only PC control --
-# pycaw>=20230407             # volume control  (Windows only)
+pycaw>=20230407; platform_system == "Windows"  # volume control (Windows only)
 # pywin32>=306                # WMI/brightness/lock (Windows only)
 # wmi>=1.5.1                  # brightness via WMI (Windows only)
 

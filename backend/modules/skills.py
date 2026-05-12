@@ -245,7 +245,10 @@ class SkillsEngine:
 
         skill_name = match.group(1).lower()
         params_str = match.group(2) or ""
-        params     = [p.strip() for p in params_str.split(":") if p.strip()]
+        if skill_name in ("web_open", "browser_open"):
+            params = [params_str.strip()] if params_str.strip() else []
+        else:
+            params = [p.strip() for p in params_str.split(":") if p.strip()]
         clean_text = re.sub(r' {2,}', ' ', self.SKILL_PATTERN.sub("", response_text)).strip()
 
         if skill_name not in self.skills_registry:
@@ -633,8 +636,8 @@ class SkillsEngine:
                     elif al == "mute": vol.SetMute(not vol.GetMute(), None)
                     elif al == "set":  vol.SetMasterVolumeLevelScalar(min(1.0, int(value) / 100.0), None)
                     return f"Volume {al}."
-                except ImportError:
-                    return "Volume control needs: pip install pycaw"
+                except ImportError as e:
+                    return f"Volume control missing dependency: {e}. Try: pip install pycaw comtypes"
             elif system == "Darwin":
                 if al == "mute": subprocess.run(["osascript", "-e", "set volume output muted true"])
                 else: subprocess.run(["osascript", "-e", f"set volume output volume {max(0,min(100,int(value)))}"])
