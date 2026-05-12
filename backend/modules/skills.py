@@ -37,7 +37,7 @@ except ImportError:
     PYWHATKIT_AVAILABLE = False
 
 DATA_SKILLS = {
-    "weather", "search", "note", "timer",
+    "weather", "search", "note", "timer", "time_now", "date_today",
     "find_and_explain", "list_files", "read_file",
     "code_review", "run_code", "search_files",
     "read_screen", "list_windows",
@@ -161,6 +161,8 @@ class SkillsEngine:
             "note":              self._skill_note,
             "search":            self._skill_web_search,
             "youtube_search":    self._skill_youtube_search,
+            "time_now":          self._skill_time_now,
+            "date_today":        self._skill_date_today,
             "clear_memory":      self._skill_clear_memory,
             "add_rule":          self._skill_add_rule,
             # System
@@ -277,6 +279,14 @@ class SkillsEngine:
     # ════════════════════════════════════════════
     # SYSTEM INFO SKILLS  ← NEW
     # ════════════════════════════════════════════
+
+    def _skill_time_now(self) -> str:
+        now = datetime.now()
+        return now.strftime("Time: %H:%M")
+
+    def _skill_date_today(self) -> str:
+        today = datetime.now()
+        return today.strftime("Date: %Y-%m-%d")
 
     def _skill_sysinfo(self, detail: str = "all") -> str:
         from modules.sysinfo import get_system_info

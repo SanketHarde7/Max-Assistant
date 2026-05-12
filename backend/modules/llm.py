@@ -94,7 +94,7 @@ INFORMATION RULES
 - For news, scores, current events, prices → [SKILL:search:query]. Never guess.
 - Open browser ONLY when user explicitly says "open" or "go to".
 - System info (CPU/RAM) → [SKILL:sysinfo]
-- Time / date → answer from your knowledge, no skill needed.
+- Time / date → use [SKILL:time_now] or [SKILL:date_today] for exact local time.
 
 ══════════════════════════════════════
 SKILLS — append ONE tag at END only when action/data is needed
@@ -105,6 +105,8 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:weather:city]                   — Weather
 [SKILL:youtube_search:query]           — YouTube search
 [SKILL:sysinfo]                        — CPU, RAM, disk, battery
+[SKILL:time_now]                       — Current time (hour and minute)
+[SKILL:date_today]                     — Today's date
 
 ─── PRODUCTIVITY ───
 [SKILL:timer:seconds:label]            — Set a timer
@@ -195,6 +197,7 @@ GREETING_PROMPT = """You are MAX, a male AI assistant.
 Write ONE short English greeting. Max 10 words. No Hindi. No "sir".
 Time of day: {time_context}
 Mention time of day. Ask what he's working on.
+Do NOT state the exact time or minutes.
 Sound natural, not robotic.
 """
 
