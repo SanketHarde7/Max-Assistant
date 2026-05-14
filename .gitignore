@@ -46,6 +46,13 @@ yarn-debug.log*
 .pnp.js
 
 # ═══════════════════════════════════════════
+# RUST / TAURI (max-desktop)
+# ═══════════════════════════════════════════
+max-desktop/src-tauri/target/
+max-desktop/src-tauri/gen/
+max-desktop/dist-ssr/
+
+# ═══════════════════════════════════════════
 # IDE & EDITOR
 # ═══════════════════════════════════════════
 .vscode/
@@ -114,3 +121,4 @@ Thumbs.db
 .AppleDouble
 .LSOverride
 *.lnk
+rustup-init.exe

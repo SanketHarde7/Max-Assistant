@@ -1,27 +1,36 @@
 """
-tts.py — MAX v4.0
-Text-to-Speech via Edge-TTS (free, no API keys needed).
+tts.py — MAX v4.1
+Text-to-Speech via Edge-TTS with automatic Hindi/English voice switching.
 """
 import os
 import asyncio
 import logging
 import tempfile
-import subprocess
 from pathlib import Path
 from config import config
+from modules.language_detector import detect_language
 
 logger = logging.getLogger("MAX.TTS")
 
 
 async def generate_tts(text: str, voice: str = "", output_path: str = "") -> str:
-    """Generate TTS audio using Edge-TTS. Returns path to audio file."""
+    """Generate TTS audio. Auto-selects Hindi voice if text contains Hindi script."""
     try:
         import edge_tts
     except ImportError:
         logger.warning("edge_tts not installed. 'pip install edge-tts' for TTS.")
         return ""
 
-    voice = voice or config.TTS_VOICE
+    # Auto-detect language if no voice explicitly provided
+    if not voice:
+        lang = detect_language(text)
+        if lang == 'hi':
+            voice = config.TTS_VOICE_HINDI
+            logger.debug(f"Using Hindi voice: {voice}")
+        else:
+            voice = config.TTS_VOICE
+            logger.debug(f"Using English voice: {voice}")
+
     if not output_path:
         tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
         output_path = tmp.name

@@ -1,0 +1,25 @@
+{
+  "identifier": "default",
+  "description": "Capability for main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:tray:default",
+    "global-shortcut:default",
+    "shell:default",
+
+    "core:window:default",
+    "core:window:allow-set-position",
+    "core:window:allow-start-dragging",
+    "core:window:allow-outer-position",
+    "core:window:allow-inner-position",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "core:window:allow-minimize",
+
+    "opener:default"
+  ]
+}

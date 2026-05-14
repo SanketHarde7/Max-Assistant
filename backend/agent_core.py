@@ -1,7 +1,14 @@
 """
 agent_core.py — MAX v4.2
 Pipeline:
-  user text → fact extract → KB query → LLM → skill exec → gatekeeper → TTS
+  user text → IntentEngine.classify() → fact extract → KB query
+           → LLM (allow_skills based on intent) → skill exec → gatekeeper → TTS
+
+KEY CHANGE v4.2:
+  IntentEngine runs BEFORE LLM call.
+  - Prevents false skill triggers (e.g., "Can you play YouTube?" no longer plays YouTube)
+  - allow_skills=False forces the LLM into conversational-only mode
+  - allow_skills=True = normal behavior, LLM can emit skill tags
 """
 import asyncio
 import logging
@@ -12,13 +19,18 @@ from modules.llm import get_response, get_response_with_skill_result, get_greeti
 from modules.skills import get_skills_engine
 from modules.memory import get_memory_manager
 from modules.tts import generate_tts
+from modules.language_detector import is_hindi_by_regex
 from modules.gatekeeper import get_gatekeeper
+from modules.Intent_engine import get_intent_engine
 
 logger = logging.getLogger("MAX.AGENT")
 
 
 def _force_open_app_skill(text: str) -> Optional[str]:
-    """Deterministic fallback for missed open-app skill tags."""
+    """
+    Deterministic fallback for missed open-app skill tags.
+    Only runs when IntentEngine classifies as COMMAND (allow_skills=True).
+    """
     patterns = [
         r"(?:\bopen\b|\bkhol(?:o|na|do)?\b|\blaunch\b)\s+([a-zA-Z0-9 ._+\-]{2,40})",
         r"([a-zA-Z0-9 ._+\-]{2,40})\s+(?:open\s+kar(?:o)?|khol(?:o|na|do)?|launch\s+kar(?:o)?)",
@@ -39,12 +51,13 @@ class MaxAgent:
         self.memory     = get_memory_manager(config)
         self.skills     = get_skills_engine(config)
         self.gatekeeper = get_gatekeeper()
+        self.intent_engine = get_intent_engine(config)
 
-    async def process_text_input(self, text: str, use_tts: bool = True) -> Dict[str, Any]:
+    async def process_text_input(self, text: str, use_tts: bool = True, input_source: str = "unknown") -> Dict[str, Any]:
         try:
             await self.memory.add_message("user", text)
 
-            # Silent fact extraction
+            # ── Silent fact extraction ──────────────────
             try:
                 await self.memory.extract_and_store_facts(text)
             except Exception:
@@ -65,10 +78,24 @@ class MaxAgent:
 
             combined_context = kb_prefix + memory_context
 
+            # ── Intent Classification (RUNS FIRST) ───────
+            # This decides whether the LLM is allowed to emit skill tags.
+            # Prevents: "Can you play YouTube?" from triggering youtube_play skill.
+            intent = await self.intent_engine.classify(text)
+            allow_skills = intent.should_execute_skill
+            logger.info(f"Intent: {intent.type.value} | allow_skills={allow_skills} | reason='{intent.reason}'")
+
             # ── LLM call ──────────────────────────────────
-            result       = await get_response(text, combined_context)
+            result       = await get_response(text, combined_context, allow_skills=allow_skills)
             llm_response = result["response"]
-            skill_tag    = result.get("skill") or _force_open_app_skill(text)
+
+            # Skill tag from LLM (only respected if allow_skills=True)
+            # If allow_skills=False, get_response already strips skill tags
+            skill_tag = result.get("skill") if allow_skills else None
+
+            # Deterministic fallback for open_app only runs on COMMAND intents
+            if allow_skills and not skill_tag:
+                skill_tag = _force_open_app_skill(text)
 
             # ── Skill execution ───────────────────────────
             if skill_tag:
@@ -102,9 +129,22 @@ class MaxAgent:
             tts_path = ""
             if use_tts and filtered:
                 tts_text = self.gatekeeper.filter_for_tts(filtered, max_chars=300)
-                tts_path = await generate_tts(tts_text)
+                voice_override = ""
+                source = (input_source or "").lower()
+                if source == "text":
+                    try:
+                        if is_hindi_by_regex(text):
+                            voice_override = self.config.TTS_VOICE_HINDI
+                    except Exception as e:
+                        logger.debug(f"Regex Hindi detect failed: {e}")
+                tts_path = await generate_tts(tts_text, voice=voice_override)
 
-            return {"response": filtered, "tts_path": tts_path, "skill_used": skill_tag}
+            return {
+                "response": filtered,
+                "tts_path": tts_path,
+                "skill_used": skill_tag,
+                "intent": intent.type.value,   # Useful for debugging/UI
+            }
 
         except Exception as e:
             logger.error(f"process_text_input error: {e}", exc_info=True)

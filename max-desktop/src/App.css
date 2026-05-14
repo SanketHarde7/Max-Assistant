@@ -1,0 +1,468 @@
+html,
+body,
+#root {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Stage: centered */
+.orb-stage {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* ═══════════════════════════════════════════════════
+   ORB CONTAINER
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  /* Smooth state transitions */
+  transition: box-shadow 0.4s ease, opacity 0.3s ease;
+}
+
+/* ─── Inner layers ─── */
+.orb-core {
+  position: absolute;
+  inset: 8px;
+  border-radius: 999px;
+  z-index: 3;
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+.orb-shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  z-index: 2;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  transition: border-color 0.4s ease;
+}
+
+.orb-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  z-index: 1;
+  transition: border-color 0.4s ease, opacity 0.4s ease;
+}
+
+/* Particle dots — 3 orbiting dots using box-shadow trick */
+.orb-particles {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.orb-particles::before,
+.orb-particles::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform-origin: 0 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   STATE: IDLE — Deep Blue with slow energy rotation
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon.idle {
+  background: conic-gradient(
+    from 0deg,
+    #1a4a8a, #2d7dd2, #5fb8ff, #2d7dd2, #1a4a8a
+  );
+  box-shadow:
+    0 0 20px rgba(45, 125, 210, 0.5),
+    0 0 40px rgba(45, 125, 210, 0.2),
+    inset 0 0 12px rgba(95, 184, 255, 0.3);
+  animation: orbRotate 6s linear infinite, breathe 4s ease-in-out infinite;
+}
+
+.circle-icon.idle .orb-core {
+  background: radial-gradient(circle at 35% 35%, #8ac4ff 0%, #2d7dd2 50%, #1a4a8a 100%);
+  box-shadow: 0 0 12px rgba(138, 196, 255, 0.6);
+  animation: corePulse 3s ease-in-out infinite;
+}
+
+.circle-icon.idle .orb-shell {
+  border-color: rgba(95, 184, 255, 0.3);
+}
+
+.circle-icon.idle .orb-ring {
+  border: 1.5px solid rgba(45, 125, 210, 0.2);
+  animation: ringPulse 4s ease-in-out infinite;
+}
+
+.circle-icon.idle .orb-particles::before {
+  background: #5fb8ff;
+  box-shadow: 0 0 6px #5fb8ff;
+  animation: particleOrbit1 5s linear infinite;
+}
+
+.circle-icon.idle .orb-particles::after {
+  background: #8ac4ff;
+  box-shadow: 0 0 6px #8ac4ff;
+  animation: particleOrbit2 7s linear infinite reverse;
+}
+
+/* ═══════════════════════════════════════════════════
+   STATE: LISTENING — Lighter blue, expanded, active
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon.listening {
+  background: conic-gradient(
+    from 0deg,
+    #3a9bff, #6db8ff, #a8d8ff, #6db8ff, #3a9bff
+  );
+  box-shadow:
+    0 0 25px rgba(58, 155, 255, 0.7),
+    0 0 50px rgba(58, 155, 255, 0.3),
+    0 0 80px rgba(58, 155, 255, 0.1),
+    inset 0 0 15px rgba(168, 216, 255, 0.5);
+  animation: orbRotate 2s linear infinite, listenPulse 1s ease-in-out infinite;
+}
+
+.circle-icon.listening .orb-core {
+  background: radial-gradient(circle at 35% 35%, #d0ebff 0%, #6db8ff 40%, #3a9bff 100%);
+  box-shadow: 0 0 18px rgba(168, 216, 255, 0.8);
+  animation: coreListenPulse 0.8s ease-in-out infinite;
+}
+
+.circle-icon.listening .orb-shell {
+  border-color: rgba(168, 216, 255, 0.5);
+  animation: shellExpand 1.2s ease-in-out infinite;
+}
+
+.circle-icon.listening .orb-ring {
+  border: 2px solid rgba(58, 155, 255, 0.4);
+  animation: ringExpand 1.5s ease-in-out infinite;
+  opacity: 1;
+}
+
+.circle-icon.listening .orb-particles::before {
+  background: #a8d8ff;
+  box-shadow: 0 0 8px #a8d8ff;
+  animation: particleOrbit1 2s linear infinite;
+}
+
+.circle-icon.listening .orb-particles::after {
+  background: #d0ebff;
+  box-shadow: 0 0 8px #d0ebff;
+  animation: particleOrbit2 3s linear infinite reverse;
+}
+
+/* ═══════════════════════════════════════════════════
+   STATE: PROCESSING — Orange/amber energy swirl
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon.processing {
+  background: conic-gradient(
+    from 0deg,
+    #c96a00, #ff9f1c, #ffc56b, #ff9f1c, #c96a00
+  );
+  box-shadow:
+    0 0 22px rgba(255, 159, 28, 0.7),
+    0 0 45px rgba(255, 159, 28, 0.25),
+    inset 0 0 14px rgba(255, 197, 107, 0.4);
+  animation: orbRotate 1.5s linear infinite, processPulse 1.2s ease-in-out infinite;
+}
+
+.circle-icon.processing .orb-core {
+  background: radial-gradient(circle at 35% 35%, #ffe4b0 0%, #ff9f1c 50%, #c96a00 100%);
+  box-shadow: 0 0 15px rgba(255, 197, 107, 0.7);
+  animation: coreProcessPulse 0.6s ease-in-out infinite;
+}
+
+.circle-icon.processing .orb-shell {
+  border-color: rgba(255, 197, 107, 0.4);
+  animation: shellSpin 2s linear infinite;
+}
+
+.circle-icon.processing .orb-ring {
+  border: 2px dashed rgba(255, 159, 28, 0.35);
+  animation: ringSpinReverse 3s linear infinite;
+}
+
+.circle-icon.processing .orb-particles::before {
+  background: #ffc56b;
+  box-shadow: 0 0 8px #ffc56b;
+  animation: particleOrbit1 1.5s linear infinite;
+}
+
+.circle-icon.processing .orb-particles::after {
+  background: #ffe4b0;
+  box-shadow: 0 0 6px #ffe4b0;
+  animation: particleOrbit2 2.5s linear infinite reverse;
+}
+
+/* ═══════════════════════════════════════════════════
+   STATE: SPEAKING — Purple/violet waves
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon.speaking {
+  background: conic-gradient(
+    from 0deg,
+    #6c3aaa, #9b59d0, #c78dff, #9b59d0, #6c3aaa
+  );
+  box-shadow:
+    0 0 22px rgba(155, 89, 208, 0.6),
+    0 0 45px rgba(155, 89, 208, 0.2),
+    inset 0 0 12px rgba(199, 141, 255, 0.4);
+  animation: orbRotate 3s linear infinite, speakWave 0.8s ease-in-out infinite;
+}
+
+.circle-icon.speaking .orb-core {
+  background: radial-gradient(circle at 35% 35%, #e0c4ff 0%, #9b59d0 50%, #6c3aaa 100%);
+  box-shadow: 0 0 16px rgba(199, 141, 255, 0.7);
+  animation: coreSpeakPulse 0.5s ease-in-out infinite;
+}
+
+.circle-icon.speaking .orb-shell {
+  border-color: rgba(199, 141, 255, 0.4);
+}
+
+.circle-icon.speaking .orb-ring {
+  border: 1.5px solid rgba(155, 89, 208, 0.3);
+  animation: ringPulse 1.5s ease-in-out infinite;
+}
+
+.circle-icon.speaking .orb-particles::before {
+  background: #c78dff;
+  box-shadow: 0 0 8px #c78dff;
+  animation: particleOrbit1 3s linear infinite;
+}
+
+.circle-icon.speaking .orb-particles::after {
+  background: #e0c4ff;
+  box-shadow: 0 0 6px #e0c4ff;
+  animation: particleOrbit2 4s linear infinite reverse;
+}
+
+
+/* ═══════════════════════════════════════════════════
+   STATE: ERROR — Red shake
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon.error {
+  background: conic-gradient(
+    from 0deg,
+    #b30000, #ff4d4d, #ff8a8a, #ff4d4d, #b30000
+  );
+  box-shadow:
+    0 0 20px rgba(255, 77, 77, 0.6),
+    inset 0 0 10px rgba(255, 138, 138, 0.3);
+  animation: shake 0.45s ease, orbRotate 2s linear infinite;
+}
+
+.circle-icon.error .orb-core {
+  background: radial-gradient(circle at 35% 35%, #ffd0d0 0%, #ff4d4d 50%, #b30000 100%);
+  box-shadow: 0 0 12px rgba(255, 77, 77, 0.6);
+}
+
+.circle-icon.error .orb-shell {
+  border-color: rgba(255, 77, 77, 0.5);
+}
+
+.circle-icon.error .orb-ring {
+  border: 1.5px solid rgba(255, 77, 77, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════
+   STATE: OFFLINE — Gray dim
+   ═══════════════════════════════════════════════════ */
+
+.circle-icon.offline {
+  background: conic-gradient(
+    from 0deg,
+    #444, #666, #888, #666, #444
+  );
+  box-shadow:
+    0 0 10px rgba(100, 100, 100, 0.3),
+    inset 0 0 8px rgba(255, 255, 255, 0.05);
+  opacity: 0.55;
+  animation: orbRotate 12s linear infinite, breatheSlow 3s ease-in-out infinite;
+}
+
+.circle-icon.offline .orb-core {
+  background: radial-gradient(circle at 35% 35%, #aaa 0%, #666 50%, #444 100%);
+  box-shadow: 0 0 6px rgba(150, 150, 150, 0.3);
+}
+
+.circle-icon.offline .orb-shell {
+  border-color: rgba(150, 150, 150, 0.15);
+}
+
+.circle-icon.offline .orb-ring {
+  border: 1px solid rgba(100, 100, 100, 0.1);
+}
+
+.circle-icon.offline .orb-particles::before,
+.circle-icon.offline .orb-particles::after {
+  opacity: 0.3;
+}
+
+/* ═══════════════════════════════════════════════════
+   KEYFRAME ANIMATIONS
+   ═══════════════════════════════════════════════════ */
+
+/* Main orb rotation — conic gradient spins */
+@keyframes orbRotate {
+  from { filter: hue-rotate(0deg); }
+  to   { filter: hue-rotate(360deg); }
+}
+
+/* Idle breathing */
+@keyframes breathe {
+  0%   { transform: scale(1);     }
+  50%  { transform: scale(1.04);  }
+  100% { transform: scale(1);     }
+}
+
+@keyframes breatheSlow {
+  0%   { transform: scale(1);    opacity: 0.5; }
+  50%  { transform: scale(1.03); opacity: 0.6; }
+  100% { transform: scale(1);    opacity: 0.5; }
+}
+
+/* Core pulsing */
+@keyframes corePulse {
+  0%   { transform: scale(1);    opacity: 0.8; }
+  50%  { transform: scale(1.1);  opacity: 1;   }
+  100% { transform: scale(1);    opacity: 0.8; }
+}
+
+@keyframes coreListenPulse {
+  0%   { transform: scale(1);    opacity: 0.9; }
+  50%  { transform: scale(1.15); opacity: 1;   }
+  100% { transform: scale(1);    opacity: 0.9; }
+}
+
+@keyframes coreProcessPulse {
+  0%   { transform: scale(0.95); opacity: 0.7; }
+  50%  { transform: scale(1.1);  opacity: 1;   }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+@keyframes coreSpeakPulse {
+  0%   { transform: scale(1);    opacity: 0.85; }
+  30%  { transform: scale(1.12); opacity: 1;    }
+  60%  { transform: scale(0.95); opacity: 0.9;  }
+  100% { transform: scale(1);    opacity: 0.85; }
+}
+
+/* Listen state pulse */
+@keyframes listenPulse {
+  0%   { transform: scale(1);    }
+  50%  { transform: scale(1.08); }
+  100% { transform: scale(1);    }
+}
+
+/* Process state pulse */
+@keyframes processPulse {
+  0%   { transform: scale(1);    }
+  50%  { transform: scale(1.05); }
+  100% { transform: scale(1);    }
+}
+
+/* Speaking wave */
+@keyframes speakWave {
+  0%   { transform: scale(1);    }
+  25%  { transform: scale(1.06); }
+  50%  { transform: scale(0.97); }
+  75%  { transform: scale(1.04); }
+  100% { transform: scale(1);    }
+}
+
+/* Shell expansion */
+@keyframes shellExpand {
+  0%   { transform: scale(1);    opacity: 0.8; }
+  50%  { transform: scale(1.06); opacity: 1;   }
+  100% { transform: scale(1);    opacity: 0.8; }
+}
+
+@keyframes shellSpin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+
+/* Ring animations */
+@keyframes ringPulse {
+  0%   { transform: scale(1);   opacity: 0.4; }
+  50%  { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1);   opacity: 0.4; }
+}
+
+@keyframes ringExpand {
+  0%   { transform: scale(1);    opacity: 0.5; }
+  50%  { transform: scale(1.25); opacity: 0.9; }
+  100% { transform: scale(1);    opacity: 0.5; }
+}
+
+@keyframes ringSpinReverse {
+  from { transform: rotate(0deg);    }
+  to   { transform: rotate(-360deg); }
+}
+
+/* Particle orbits */
+@keyframes particleOrbit1 {
+  from { transform: rotate(0deg)   translateX(28px) rotate(0deg);   }
+  to   { transform: rotate(360deg) translateX(28px) rotate(-360deg); }
+}
+
+@keyframes particleOrbit2 {
+  from { transform: rotate(0deg)   translateX(24px) rotate(0deg);   }
+  to   { transform: rotate(360deg) translateX(24px) rotate(-360deg); }
+}
+
+/* Error shake */
+@keyframes shake {
+  0%   { transform: translateX(0);    }
+  18%  { transform: translateX(-6px); }
+  36%  { transform: translateX(6px);  }
+  54%  { transform: translateX(-4px); }
+  72%  { transform: translateX(4px);  }
+  90%  { transform: translateX(-2px); }
+  100% { transform: translateX(0);    }
+}
+
+/* ═══════════════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════════════ */
+
+.toast {
+  position: absolute;
+  bottom: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: toast-in 0.2s ease forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0);   }
+}

@@ -42,7 +42,7 @@ pip install -r requirements.txt --quiet --disable-pip-version-check 2>nul
 
 :: Start backend in background
 echo [3/4] Starting backend server...
-start "JARVIS-Backend" cmd /c "cd /d %~dp0backend && call .venv\Scripts\activate.bat && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+start "JARVIS-Backend" cmd /c "cd /d %~dp0backend && call .venv\Scripts\activate.bat && python main.py"
 
 :: Wait for backend to start
 timeout /t 3 /nobreak >nul

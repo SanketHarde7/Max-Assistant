@@ -36,6 +36,7 @@ pyautogui>=0.9.54             # mouse, keyboard, screenshot
 pygetwindow>=0.0.9            # window listing (Windows)
 pyperclip>=1.8.0              # clipboard
 plyer>=2.1.0                  # desktop notifications (timer + reminders)
+pycaw>=20230407               # audio control
 
 # -- Windows-only PC control --
 pycaw>=20230407; platform_system == "Windows"  # volume control (Windows only)
