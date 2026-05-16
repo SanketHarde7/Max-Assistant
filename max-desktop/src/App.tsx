@@ -338,10 +338,9 @@ const App: React.FC = () => {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="orb-stage" data-tauri-drag-region>
+    <div className="orb-stage">
       <div
         className={`circle-icon ${orbState}`}
-        data-tauri-drag-region
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         role="button"

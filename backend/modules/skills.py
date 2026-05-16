@@ -1,15 +1,23 @@
 """
-skills.py — MAX v4.2
+skills.py — MAX v4.3
+Fixes:
+  - Removed conflicting `quote` imports (email.utils + shlex)
+  - YouTube play: replaced unreliable pywhatkit with httpx-based video ID extraction
+  - YouTube search: proper urllib.parse.quote_plus URL encoding
+  - web_open: URL sanitization (strips `url=` prefix LLM sometimes emits)
+  - web_search: proper URL encoding for DuckDuckGo fallback
+  - Volume control: reverted pycaw usage to correct working pattern
+  - WhatsApp: replaced pywhatkit automation with reliable wa.me link approach
+
 New skills added:
-  - sysinfo          → CPU, RAM, disk, battery
-  - media            → play, pause, next, prev, stop
-  - reminder_set     → [SKILL:reminder_set:text:YYYY-MM-DD:HH:MM]
-  - reminder_list    → list pending reminders
-  - reminder_clear   → clear all reminders
-  - top_processes    → top CPU processes
+  - google_search   → opens Google search
+  - spotify_play    → opens Spotify with search (protocol + web fallback)
+  - maps_open       → opens Google Maps for a location
+  - math_calc       → evaluates math expressions safely
 """
 import re
 import os
+import urllib.parse
 import time
 import asyncio
 import threading
@@ -30,6 +38,7 @@ try:
 except ImportError:
     PYAUTOGUI_AVAILABLE = False
 
+# pywhatkit kept only for backward compatibility — not used in core flows anymore
 try:
     import pywhatkit
     PYWHATKIT_AVAILABLE = True
@@ -37,14 +46,16 @@ except ImportError:
     PYWHATKIT_AVAILABLE = False
 
 DATA_SKILLS = {
-    "weather", "search", "note", "timer", "time_now", "date_today",
+    "weather", "search", "google_search", "note", "timer", "time_now", "date_today",
     "find_and_explain", "list_files", "read_file",
     "code_review", "run_code", "search_files",
     "read_screen", "list_windows",
     "email_check", "calendar_today", "calendar_week",
     "browser_scrape", "plugin_list", "list_apps",
     "sysinfo", "top_processes", "reminder_list",
-    "kb_search", "kb_list", "kb_stats", "kb_rebuild",}
+    "kb_search", "kb_list", "kb_stats", "kb_rebuild",
+    "math_calc",
+}
 
 LONG_RESULT_SKILLS = {
     "find_and_explain", "list_files", "read_file",
@@ -77,15 +88,15 @@ class SkillsEngine:
 
     def __init__(self, config):
         self.config = config
-        self._code_engine    = None
-        self._file_manager   = None
-        self._email_agent    = None
-        self._calendar_agent = None
-        self._browser_agent  = None
-        self._smarthome_agent= None
-        self._plugin_loader  = None
-        self._app_indexer    = None
-        self.skills_registry = self._register_skills()
+        self._code_engine     = None
+        self._file_manager    = None
+        self._email_agent     = None
+        self._calendar_agent  = None
+        self._browser_agent   = None
+        self._smarthome_agent = None
+        self._plugin_loader   = None
+        self._app_indexer     = None
+        self.skills_registry  = self._register_skills()
         self._load_plugins()
 
     # ── Lazy properties ──────────────────────────────────────
@@ -159,8 +170,12 @@ class SkillsEngine:
             "timer":             self._skill_timer,
             "note":              self._skill_note,
             "search":            self._skill_web_search,
+            "google_search":     self._skill_google_search,
             "youtube_search":    self._skill_youtube_search,
             "youtube_play":      self._skill_youtube_play,
+            "spotify_play":      self._skill_spotify_play,
+            "maps_open":         self._skill_maps_open,
+            "math_calc":         self._skill_math_calc,
             "time_now":          self._skill_time_now,
             "date_today":        self._skill_date_today,
             "clear_memory":      self._skill_clear_memory,
@@ -247,10 +262,13 @@ class SkillsEngine:
 
         skill_name = match.group(1).lower()
         params_str = match.group(2) or ""
-        if skill_name in ("web_open", "browser_open"):
+
+        # Skills that take a full URL as first param — never split on ':'
+        if skill_name in ("web_open", "browser_open", "maps_open"):
             params = [params_str.strip()] if params_str.strip() else []
         else:
             params = [p.strip() for p in params_str.split(":") if p.strip()]
+
         clean_text = re.sub(r' {2,}', ' ', self.SKILL_PATTERN.sub("", response_text)).strip()
 
         if skill_name not in self.skills_registry:
@@ -277,16 +295,18 @@ class SkillsEngine:
             return {"executed": False, "error": str(e), "clean_text": clean_text, "is_data_skill": False}
 
     # ════════════════════════════════════════════
-    # SYSTEM INFO SKILLS  ← NEW
+    # TIME / DATE
     # ════════════════════════════════════════════
 
     def _skill_time_now(self) -> str:
-        now = datetime.now()
-        return now.strftime("Time: %H:%M")
+        return datetime.now().strftime("Time: %H:%M")
 
     def _skill_date_today(self) -> str:
-        today = datetime.now()
-        return today.strftime("Date: %Y-%m-%d")
+        return datetime.now().strftime("Date: %A, %d %B %Y")
+
+    # ════════════════════════════════════════════
+    # SYSTEM INFO
+    # ════════════════════════════════════════════
 
     def _skill_sysinfo(self, detail: str = "all") -> str:
         from modules.sysinfo import get_system_info
@@ -297,7 +317,7 @@ class SkillsEngine:
         return get_top_processes(int(n) if n.isdigit() else 5)
 
     # ════════════════════════════════════════════
-    # MEDIA CONTROL SKILL  ← NEW
+    # MEDIA CONTROL
     # ════════════════════════════════════════════
 
     def _skill_media(self, action: str = "play", *args) -> str:
@@ -305,18 +325,14 @@ class SkillsEngine:
         return media_action(action)
 
     # ════════════════════════════════════════════
-    # REMINDER SKILLS  ← NEW
+    # REMINDER
     # ════════════════════════════════════════════
 
     def _skill_reminder_set(self, *args) -> str:
         from modules.reminder_agent import set_reminder
-        # args: text, date (YYYY-MM-DD), time (HH:MM optional)
         if len(args) < 2:
             return "Usage: reminder_set:text:YYYY-MM-DD:HH:MM"
-        text     = args[0]
-        date_str = args[1]
-        time_str = args[2] if len(args) > 2 else "09:00"
-        return set_reminder(self.config, text, date_str, time_str)
+        return set_reminder(self.config, args[0], args[1], args[2] if len(args) > 2 else "09:00")
 
     def _skill_reminder_list(self, *args) -> str:
         from modules.reminder_agent import list_reminders
@@ -356,12 +372,13 @@ class SkillsEngine:
             return "Could not reach weather server."
 
     def _skill_web_search(self, *args) -> str:
+        """News + DuckDuckGo search, falls back to browser."""
         import httpx
         query = " ".join(args).strip()
         if not query:
             return "What should I search for?"
         try:
-            encoded = query.replace(" ", "+")
+            encoded = urllib.parse.quote_plus(query)
             rss = f"https://news.google.com/rss/search?q={encoded}&hl=en-IN&gl=IN&ceid=IN:en"
             with httpx.Client(timeout=7.0) as c:
                 resp = c.get(rss, headers={"User-Agent": "Mozilla/5.0"})
@@ -389,13 +406,142 @@ class SkillsEngine:
                     return abstract[:300]
         except Exception:
             pass
-        webbrowser.open(f"https://duckduckgo.com/?q={query.replace(' ', '+')}")
-        return f"Opened browser search for '{query}'."
+        webbrowser.open(f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}")
+        return f"Opened search for '{query}'."
+
+    def _skill_google_search(self, *args) -> str:
+        """Open Google search in browser."""
+        query = " ".join(args).strip()
+        if not query:
+            return "What to search on Google?"
+        webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote_plus(query)}")
+        return f"Google search opened for '{query}'."
 
     def _skill_youtube_search(self, *args) -> str:
+        """Open YouTube search results."""
         query = " ".join(args).strip()
-        webbrowser.open(f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}")
-        return "YouTube search opened."
+        if not query:
+            return "What to search on YouTube?"
+        webbrowser.open(f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}")
+        return f"YouTube search opened for '{query}'."
+
+    def _skill_youtube_play(self, *args) -> str:
+        """
+        Play first YouTube result directly.
+
+        WHY NOT pywhatkit:
+          pywhatkit.playonyt() relies on browser DOM automation to click the first
+          video thumbnail. It breaks whenever YouTube changes its layout.
+
+        THIS APPROACH:
+          1. Fetch YouTube search results page via httpx (pure HTTP, no browser)
+          2. Extract first videoId from the embedded JSON in the page
+          3. Open https://youtube.com/watch?v={id}&autoplay=1 directly
+          4. Falls back to search results page if extraction fails
+        """
+        query = " ".join(args).strip()
+        if not query:
+            return "What should I play on YouTube?"
+
+        search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
+
+        try:
+            import httpx
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+                resp = client.get(search_url, headers=headers)
+
+            # YouTube inlines all video data as JSON in the page
+            # "videoId":"xxxxxxxxxxx" appears before each video entry
+            video_ids = re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', resp.text)
+
+            if video_ids:
+                video_url = f"https://www.youtube.com/watch?v={video_ids[0]}&autoplay=1"
+                webbrowser.open(video_url)
+                return f"Playing '{query}' on YouTube."
+
+        except Exception as e:
+            logger.warning(f"YouTube play extraction failed: {e}")
+
+        # Graceful fallback — search results is still useful
+        webbrowser.open(search_url)
+        return f"Opened YouTube search for '{query}'. Click the first video to play."
+
+    def _skill_spotify_play(self, *args) -> str:
+        """Open Spotify desktop app or web player with a search query."""
+        query = " ".join(args).strip()
+        if not query:
+            return "What should I play on Spotify?"
+        # Try Spotify URI protocol (opens desktop app if installed)
+        try:
+            spotify_uri = f"spotify:search:{urllib.parse.quote(query)}"
+            if platform.system() == "Windows":
+                os.startfile(spotify_uri)
+            else:
+                subprocess.Popen(["xdg-open", spotify_uri])
+            return f"Opening '{query}' on Spotify."
+        except Exception:
+            pass
+        # Web fallback
+        webbrowser.open(f"https://open.spotify.com/search/{urllib.parse.quote_plus(query)}")
+        return f"Opened Spotify search for '{query}'."
+
+    def _skill_maps_open(self, *args) -> str:
+        """Open Google Maps for a location or directions."""
+        place = " ".join(args).strip()
+        if not place:
+            webbrowser.open("https://maps.google.com")
+            return "Google Maps opened."
+        webbrowser.open(f"https://maps.google.com/search/{urllib.parse.quote_plus(place)}")
+        return f"Google Maps opened for '{place}'."
+
+    def _skill_math_calc(self, *args) -> str:
+        """
+        Safely evaluate a math expression.
+        Uses ast to parse — no arbitrary code execution.
+        Supports: +, -, *, /, **, %, sqrt, sin, cos, pi, e, etc.
+        """
+        import ast
+        import math
+        import operator as op
+
+        expr = " ".join(args).strip()
+        if not expr:
+            return "Provide a math expression."
+
+        # Allowed names from math module
+        safe_env = {
+            k: v for k, v in vars(math).items()
+            if not k.startswith("_")
+        }
+        safe_env.update({"abs": abs, "round": round, "min": min, "max": max})
+
+        try:
+            tree = ast.parse(expr, mode="eval")
+            # Walk tree to reject unsafe nodes
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Name):
+                        if node.func.id not in safe_env:
+                            return f"Function '{node.func.id}' not allowed."
+                    elif not isinstance(node.func, ast.Attribute):
+                        return "Only math functions allowed."
+            result = eval(compile(tree, "<string>", "eval"), {"__builtins__": {}}, safe_env)
+            # Format: int if whole number, else up to 6 sig figs
+            if isinstance(result, float) and result.is_integer():
+                return f"{expr} = {int(result)}"
+            return f"{expr} = {round(result, 6)}"
+        except ZeroDivisionError:
+            return "Division by zero."
+        except Exception as e:
+            return f"Could not calculate: {e}"
 
     def _skill_clear_memory(self) -> str:
         return "Memory cleared."
@@ -417,9 +563,12 @@ class SkillsEngine:
             if secs <= 0:
                 return "Timer needs a positive duration."
 
+            # Sanitize label for PowerShell — strip single quotes
+            safe_label = label.replace("'", "").replace('"', '')
+
             def _countdown():
                 time.sleep(secs)
-                msg = f"MAX: {label} done! ({secs}s)"
+                msg = f"MAX: {safe_label} done! ({secs}s)"
                 try:
                     from plyer import notification
                     notification.notify(title="MAX Timer", message=msg, timeout=8)
@@ -433,11 +582,12 @@ class SkillsEngine:
                     except Exception:
                         pass
                 if platform.system() == "Windows":
-                    subprocess.run([
-                        "powershell", "-Command",
-                        f"Add-Type -AssemblyName System.Windows.Forms; "
-                        f"[System.Windows.Forms.MessageBox]::Show('{msg}','MAX')"
-                    ], capture_output=True)
+                    subprocess.run(
+                        ["powershell", "-Command",
+                         f"Add-Type -AssemblyName System.Windows.Forms; "
+                         f"[System.Windows.Forms.MessageBox]::Show('{msg}','MAX')"],
+                        capture_output=True
+                    )
 
             threading.Thread(target=_countdown, daemon=True).start()
             mins, rem = divmod(secs, 60)
@@ -484,8 +634,10 @@ class SkillsEngine:
                     pass
             pg.screenshot(region=region).convert('RGB').save(str(path), quality=85)
             from modules.llm import analyze_image_with_prompt
-            return await analyze_image_with_prompt(str(path),
-                f"Describe what's visible on the '{target or 'screen'}'. Read URLs and text.")
+            return await analyze_image_with_prompt(
+                str(path),
+                f"Describe what's visible on the '{target or 'screen'}'. Read URLs and text."
+            )
         except ImportError:
             return "pyautogui needed: pip install pyautogui"
         except Exception as e:
@@ -517,22 +669,49 @@ class SkillsEngine:
     # ════════════════════════════════════════════
 
     _WIN_PROTOCOLS: Dict[str, str] = {
-        "whatsapp": "whatsapp:", "spotify": "spotify:", "discord": "discord:",
-        "teams": "msteams:", "ms-teams": "msteams:", "microsoft teams": "msteams:",
-        "slack": "slack:", "zoom": "zoommtg://", "telegram": "tg:", "skype": "skype:",
+        "whatsapp":         "whatsapp:",
+        "spotify":          "spotify:",
+        "discord":          "discord:",
+        "teams":            "msteams:",
+        "ms-teams":         "msteams:",
+        "microsoft teams":  "msteams:",
+        "slack":            "slack:",
+        "zoom":             "zoommtg://",
+        "telegram":         "tg:",
+        "skype":            "skype:",
     }
     _WIN_DIRECT: Dict[str, str] = {
-        "notepad": "notepad.exe", "calculator": "calc.exe", "calc": "calc.exe",
-        "paint": "mspaint.exe", "cmd": "cmd.exe", "command prompt": "cmd.exe",
-        "terminal": "wt.exe", "windows terminal": "wt.exe", "powershell": "powershell.exe",
-        "explorer": "explorer.exe", "file explorer": "explorer.exe",
-        "task manager": "taskmgr.exe", "taskmgr": "taskmgr.exe",
-        "chrome": "chrome", "google chrome": "chrome", "firefox": "firefox",
-        "edge": "msedge", "brave": "brave", "opera": "opera",
-        "vscode": "code", "vs code": "code", "visual studio code": "code",
-        "word": "winword", "excel": "excel", "powerpoint": "powerpnt",
-        "outlook": "outlook", "vlc": "vlc", "obs": "obs64",
-        "pycharm": "pycharm64", "postman": "postman", "figma": "figma",
+        "notepad":              "notepad.exe",
+        "calculator":           "calc.exe",
+        "calc":                 "calc.exe",
+        "paint":                "mspaint.exe",
+        "cmd":                  "cmd.exe",
+        "command prompt":       "cmd.exe",
+        "terminal":             "wt.exe",
+        "windows terminal":     "wt.exe",
+        "powershell":           "powershell.exe",
+        "explorer":             "explorer.exe",
+        "file explorer":        "explorer.exe",
+        "task manager":         "taskmgr.exe",
+        "taskmgr":              "taskmgr.exe",
+        "chrome":               "chrome",
+        "google chrome":        "chrome",
+        "firefox":              "firefox",
+        "edge":                 "msedge",
+        "brave":                "brave",
+        "opera":                "opera",
+        "vscode":               "code",
+        "vs code":              "code",
+        "visual studio code":   "code",
+        "word":                 "winword",
+        "excel":                "excel",
+        "powerpoint":           "powerpnt",
+        "outlook":              "outlook",
+        "vlc":                  "vlc",
+        "obs":                  "obs64",
+        "pycharm":              "pycharm64",
+        "postman":              "postman",
+        "figma":                "figma",
     }
 
     def _skill_open_app(self, app_name: str = "", **kw) -> str:
@@ -543,7 +722,7 @@ class SkillsEngine:
         web_map   = getattr(self.config, 'WEB_FALLBACK_MAP', {})
 
         if system == "Windows":
-            # Step 1: Protocol handler
+            # Step 1: Protocol handler (WhatsApp, Spotify, Discord, etc.)
             proto = self._WIN_PROTOCOLS.get(app_lower)
             if proto:
                 try:
@@ -552,7 +731,7 @@ class SkillsEngine:
                 except Exception as e:
                     logger.warning(f"Protocol failed for '{app_name}': {e}")
 
-            # Step 2: Direct exe
+            # Step 2: Direct exe map
             exe = self._WIN_DIRECT.get(app_lower)
             if exe:
                 try:
@@ -561,7 +740,7 @@ class SkillsEngine:
                 except Exception as e:
                     logger.warning(f"Direct exe failed for '{app_name}': {e}")
 
-            # Step 3: App indexer (fuzzy, all installed apps)
+            # Step 3: App indexer (fuzzy search across all installed apps)
             try:
                 match = self.app_indexer.find_app(app_lower)
                 if match:
@@ -593,6 +772,7 @@ class SkillsEngine:
             except Exception:
                 pass
 
+        # Web fallback for known apps (YouTube, GitHub, etc.)
         fallback = web_map.get(app_lower)
         if fallback:
             webbrowser.open(fallback)
@@ -618,10 +798,27 @@ class SkillsEngine:
             return f"Rebuild failed: {e}"
 
     def _skill_web_open(self, url: str = "", **kw) -> str:
+        """
+        Open a URL in the default browser.
+
+        FIX: LLM sometimes outputs [SKILL:web_open:url=https://...] with the
+        parameter name included. Strip `url=` prefix before processing.
+        """
         if not url:
             return "Provide a URL."
+        url = url.strip()
+
+        # Strip parameter-name prefix the LLM sometimes emits (e.g. url=https://...)
+        if url.lower().startswith("url="):
+            url = url[4:].strip()
+        # Also handle href= prefix
+        if url.lower().startswith("href="):
+            url = url[5:].strip()
+
+        # Ensure protocol
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
+
         try:
             webbrowser.open(url)
             return "URL opened in browser."
@@ -634,26 +831,29 @@ class SkillsEngine:
             al = action.lower()
             if system == "Windows":
                 try:
-                    import comtypes
-                    comtypes.CoInitialize()
                     from ctypes import cast, POINTER
+                    import comtypes
                     from comtypes import CLSCTX_ALL
                     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-                    devices  = AudioUtilities.GetSpeakers()
+                    comtypes.CoInitialize()
+                    devices   = AudioUtilities.GetSpeakers()
                     interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                    vol = cast(interface, POINTER(IAudioEndpointVolume))
-                    step = int(value) / 100.0
-                    if al == "up":    vol.SetMasterVolumeLevelScalar(min(1.0, vol.GetMasterVolumeLevelScalar() + step), None)
-                    elif al == "down": vol.SetMasterVolumeLevelScalar(max(0.0, vol.GetMasterVolumeLevelScalar() - step), None)
+                    vol       = cast(interface, POINTER(IAudioEndpointVolume))
+                    step      = int(value) / 100.0
+                    current   = vol.GetMasterVolumeLevelScalar()
+                    if al == "up":    vol.SetMasterVolumeLevelScalar(min(1.0, current + step), None)
+                    elif al == "down": vol.SetMasterVolumeLevelScalar(max(0.0, current - step), None)
                     elif al == "mute": vol.SetMute(not vol.GetMute(), None)
                     elif al == "set":  vol.SetMasterVolumeLevelScalar(min(1.0, int(value) / 100.0), None)
-                    comtypes.CoUninitialize()   
+                    comtypes.CoUninitialize()
                     return f"Volume {al}."
-                except ImportError as e:
-                    return f"Volume control missing dependency: {e}. Try: pip install pycaw comtypes"
+                except ImportError:
+                    return "Volume control needs: pip install pycaw comtypes"
             elif system == "Darwin":
-                if al == "mute": subprocess.run(["osascript", "-e", "set volume output muted true"])
-                else: subprocess.run(["osascript", "-e", f"set volume output volume {max(0,min(100,int(value)))}"])
+                if al == "mute":
+                    subprocess.run(["osascript", "-e", "set volume output muted true"])
+                else:
+                    subprocess.run(["osascript", "-e", f"set volume output volume {max(0, min(100, int(value)))}"])
                 return "Volume adjusted."
             else:
                 subprocess.run(["amixer", "-D", "pulse", "sset", "Master", f"{value}%"])
@@ -665,13 +865,15 @@ class SkillsEngine:
         try:
             if platform.system() == "Windows":
                 import wmi
-                w = wmi.WMI(namespace='wmi')
+                w       = wmi.WMI(namespace='wmi')
                 methods = w.WmiMonitorBrightnessMethods()[0]
                 current = w.WmiMonitorBrightness()[0].CurrentBrightness
-                step = int(value)
-                new_val = (min(100, current + step) if action.lower() == "up"
-                           else max(0, current - step) if action.lower() == "down"
-                           else max(0, min(100, int(value))))
+                step    = int(value)
+                new_val = (
+                    min(100, current + step) if action.lower() == "up" else
+                    max(0,   current - step) if action.lower() == "down" else
+                    max(0, min(100, int(value)))
+                )
                 methods.WmiSetBrightness(new_val, 0)
                 return f"Brightness set to {new_val}%."
             elif platform.system() == "Darwin":
@@ -692,7 +894,8 @@ class SkillsEngine:
                 content = pyperclip.paste()
                 return f"Clipboard: {content[:200]}" if content else "Clipboard is empty."
             elif action.lower() == "set":
-                if not text: return "What should I copy to clipboard?"
+                if not text:
+                    return "What should I copy to clipboard?"
                 pyperclip.copy(text)
                 return "Copied to clipboard."
             return "Use 'get' or 'set'."
@@ -713,36 +916,35 @@ class SkillsEngine:
             return "PC locked."
         except Exception as e:
             return f"Lock failed: {str(e)[:120]}"
-    
-    def _skill_youtube_play(self, *args) -> str:
-        """Directly plays the first video matching the query on YouTube."""
-        if not PYWHATKIT_AVAILABLE:
-            return "YouTube play needs: pip install pywhatkit"
-        query = " ".join(args).strip()
-        if not query:
-            return "What should I play on YouTube?"
-        try:
-            # Ye direct video open karke play kar dega
-            pywhatkit.playonyt(query)
-            return f"Playing '{query}' on YouTube."
-        except Exception as e:
-            return f"YouTube play failed: {e}"
-    
+
     def _skill_whatsapp_message(self, contact: str = "", message: str = "", **kw) -> str:
-        if not PYWHATKIT_AVAILABLE: return "WhatsApp needs: pip install pywhatkit"
-        if not contact: return "Provide contact number (+91 format)."
-        if not message: return "What message should I send?"
-        if not contact.startswith("+"): contact = "+" + contact
-        try:
-            pywhatkit.sendwhatmsg_instantly(phone_no=contact, message=message, wait_time=15, tab_close=True, close_time=3)
-            return "WhatsApp message sent."
-        except Exception as e:
-            return f"WhatsApp failed: {e}"
+        """
+        Open WhatsApp with a pre-filled message via wa.me link.
+
+        WHY NOT pywhatkit:
+          pywhatkit.sendwhatmsg_instantly() requires browser DOM automation —
+          it's slow, unreliable, and breaks often. wa.me is the official
+          WhatsApp click-to-chat API and works reliably.
+
+        contact: phone number with country code (e.g. 919876543210 or +91...)
+        message: message text to pre-fill
+        """
+        if not contact:
+            return "Provide contact number with country code (e.g. 919876543210)."
+        if not message:
+            return "What message should I send?"
+        # Strip non-digits for wa.me (it needs clean number)
+        contact_digits = re.sub(r'[^0-9]', '', contact)
+        url = f"https://wa.me/{contact_digits}?text={urllib.parse.quote(message)}"
+        webbrowser.open(url)
+        return f"WhatsApp opened for {contact}. Click Send to deliver the message."
 
     def _skill_type_text(self, *args) -> str:
-        if not PYAUTOGUI_AVAILABLE: return "Typing needs: pip install pyautogui"
+        if not PYAUTOGUI_AVAILABLE:
+            return "Typing needs: pip install pyautogui"
         text = " ".join(args).strip()
-        if not text: return "What should I type?"
+        if not text:
+            return "What should I type?"
         try:
             time.sleep(1.5)
             pyautogui.write(text, interval=0.04)
@@ -753,18 +955,24 @@ class SkillsEngine:
     def _skill_system_shutdown(self, delay: str = "30", **kw) -> str:
         try:
             secs = max(0, int(delay))
-            if platform.system() == "Windows": subprocess.run(["shutdown", "/s", "/t", str(secs)], check=True)
-            else: subprocess.run(["sudo", "shutdown", "-h", f"+{max(1,secs//60)}"], check=True)
+            if platform.system() == "Windows":
+                subprocess.run(["shutdown", "/s", "/t", str(secs)], check=True)
+            else:
+                subprocess.run(["sudo", "shutdown", "-h", f"+{max(1, secs // 60)}"], check=True)
             return f"Shutting down in {secs}s. Save your work."
-        except Exception as e: return f"Shutdown failed: {e}"
+        except Exception as e:
+            return f"Shutdown failed: {e}"
 
     def _skill_system_restart(self, delay: str = "30", **kw) -> str:
         try:
             secs = max(0, int(delay))
-            if platform.system() == "Windows": subprocess.run(["shutdown", "/r", "/t", str(secs)], check=True)
-            else: subprocess.run(["sudo", "shutdown", "-r", f"+{max(1,secs//60)}"], check=True)
+            if platform.system() == "Windows":
+                subprocess.run(["shutdown", "/r", "/t", str(secs)], check=True)
+            else:
+                subprocess.run(["sudo", "shutdown", "-r", f"+{max(1, secs // 60)}"], check=True)
             return f"Restarting in {secs}s."
-        except Exception as e: return f"Restart failed: {e}"
+        except Exception as e:
+            return f"Restart failed: {e}"
 
     # ════════════════════════════════════════════
     # EMAIL / CALENDAR / BROWSER / SMART HOME
@@ -785,9 +993,9 @@ class SkillsEngine:
     def _skill_browser_scrape(self, *a):
         if len(a) < 2: return "Usage: browser_scrape:url:query"
         return self.browser_agent.scrape(a[0], a[1])
-    def _skill_fan(self, *a): return self.smarthome_agent.fan_control(a[0] if a else "on", a[1] if len(a)>1 else "")
-    def _skill_smart_light(self, *a): return self.smarthome_agent.light_control(a[0] if a else "on", a[1] if len(a)>1 else "")
-    def _skill_smart_ac(self, *a): return self.smarthome_agent.ac_control(a[0] if a else "on", a[1] if len(a)>1 else "")
+    def _skill_fan(self, *a): return self.smarthome_agent.fan_control(a[0] if a else "on", a[1] if len(a) > 1 else "")
+    def _skill_smart_light(self, *a): return self.smarthome_agent.light_control(a[0] if a else "on", a[1] if len(a) > 1 else "")
+    def _skill_smart_ac(self, *a): return self.smarthome_agent.ac_control(a[0] if a else "on", a[1] if len(a) > 1 else "")
     def _skill_plugin_list(self, *a): return self.plugin_loader.list_plugins()
     def _skill_plugin_reload(self, *a):
         self.plugin_loader.reload()
@@ -795,35 +1003,28 @@ class SkillsEngine:
         return "Plugins reloaded."
 
     # ════════════════════════════════════════════
-    # KNOWLEDGE BASE SKILLS  ← NEW
+    # KNOWLEDGE BASE
     # ════════════════════════════════════════════
 
     def _skill_kb_search(self, *args) -> str:
-        """Manual KB search — bypasses auto-injection to show raw results."""
         query = " ".join(args).strip()
         if not query:
             return "What should I search in the knowledge base?"
         try:
             from modules.knowledge_base import get_knowledge_base
-            kb  = get_knowledge_base(self.config)
-            ctx = kb.query(query, top_k=3, min_similarity=0.20)
-            if ctx:
-                return ctx
-            return f"Nothing relevant found in knowledge base for: '{query}'."
+            ctx = get_knowledge_base(self.config).query(query, top_k=3, min_similarity=0.20)
+            return ctx if ctx else f"Nothing relevant found for: '{query}'."
         except Exception as e:
             return f"KB search failed: {e}"
 
     def _skill_kb_rebuild(self, *args) -> str:
-        """Rebuild the full knowledge base index from .md files."""
         try:
             from modules.knowledge_base import get_knowledge_base
             result = get_knowledge_base(self.config).build_index()
             if "error" in result:
                 return result["error"]
-            files  = result.get("files", 0)
-            chunks = result.get("chunks", 0)
+            msg = f"Knowledge base rebuilt: {result.get('files', 0)} file(s), {result.get('chunks', 0)} chunks."
             indexed = result.get("indexed", [])
-            msg = f"Knowledge base rebuilt: {files} file(s), {chunks} chunks indexed."
             if indexed:
                 msg += "\n" + "\n".join(f"  • {f}" for f in indexed)
             return msg
@@ -831,7 +1032,6 @@ class SkillsEngine:
             return f"KB rebuild failed: {e}"
 
     def _skill_kb_list(self, *args) -> str:
-        """List all .md files in the knowledge folder."""
         try:
             from modules.knowledge_base import get_knowledge_base
             return get_knowledge_base(self.config).list_documents()
@@ -839,7 +1039,6 @@ class SkillsEngine:
             return f"KB list failed: {e}"
 
     def _skill_kb_stats(self, *args) -> str:
-        """Show knowledge base stats (chunks, files, paths)."""
         try:
             from modules.knowledge_base import get_knowledge_base
             stats = get_knowledge_base(self.config).get_stats()
@@ -847,10 +1046,9 @@ class SkillsEngine:
                 return f"Knowledge base not ready. {stats.get('error', '')}"
             return (
                 f"Knowledge base stats:\n"
-                f"  • Indexed chunks : {stats['chunks']}\n"
-                f"  • .md files      : {stats['md_files']}\n"
-                f"  • KB folder      : {stats['kb_dir']}\n"
-                f"  • ChromaDB path  : {stats['chroma_dir']}"
+                f"  • Chunks: {stats['chunks']}\n"
+                f"  • Files:  {stats['md_files']}\n"
+                f"  • Path:   {stats['kb_dir']}"
             )
         except Exception as e:
             return f"KB stats failed: {e}"

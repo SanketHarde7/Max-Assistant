@@ -1,5 +1,4 @@
-"""
-llm.py — MAX v4.5 (Fine-tuned)
+"""llm.py — MAX v4.5 (Fine-tuned)
 - Language: dynamic (English or Hinglish) based on user input.
 - Removes "English ONLY" restrictions.
 - Capability questions answered truthfully without executing skills.
@@ -167,7 +166,7 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:open_app:name]                  — Open any installed app
 [SKILL:list_apps:query]                — List installed apps
 [SKILL:rebuild_app_index]              — Rescan installed apps
-[SKILL:web_open:url]                   — Open a URL
+[SKILL:web_open:https://example.com]   — Open a URL
 [SKILL:volume:up|down|mute:val]        — Volume
 [SKILL:brightness:up|down|set:val]     — Brightness
 [SKILL:clipboard:get|set:text]         — Clipboard
@@ -175,6 +174,7 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:system_shutdown:secs]           — Shutdown
 [SKILL:system_restart:secs]            — Restart
 [SKILL:media:play|pause|next|prev|stop]— Media playback control
+[SKILL:whatsapp_message:number:text]   — Send WhatsApp message
 
 ─── SMART HOME ───
 [SKILL:fan:on|off|speed:val]           — Fan control
@@ -182,7 +182,7 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:smart_ac:on|off|temp:val]       — AC control
 
 ─── BROWSER ───
-[SKILL:browser_open:url]               — Open URL in Selenium
+[SKILL:browser_open:https://url.com]   — Open URL in Selenium
 [SKILL:browser_scrape:url:query]       — Scrape page
 
 ─── PLUGIN ───
