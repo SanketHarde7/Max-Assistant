@@ -82,7 +82,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![exit_app])
+        .invoke_handler(tauri::generate_handler![exit_app, start_listening_animation, stop_listening_animation])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
                 let _ = window.hide();
