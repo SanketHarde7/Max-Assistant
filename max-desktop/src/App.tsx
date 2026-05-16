@@ -27,6 +27,8 @@ import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { useBackend, BackendMessage, BackendStatus } from "./hooks/useBackend";
 import { useVoice }         from "./hooks/useVoice";
 import "./App.css";
+import "./ListeningOverlay.css";
+import { ListeningOverlay } from "./ListeningOverlay";
 
 const DRAG_THRESHOLD_MS         = 200;
 const POSITION_SAVE_DEBOUNCE_MS = 300;
@@ -41,6 +43,7 @@ const App: React.FC = () => {
   const [orbState, setOrbState]   = useState<OrbState>("idle");
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
+  const [overlayActive, setOverlayActive] = useState(false);
 
   const dragTimerRef     = useRef<number | null>(null);
   const dragStartedRef   = useRef(false);
@@ -195,6 +198,16 @@ const App: React.FC = () => {
     }
   }, [showError]);
 
+  useEffect(() => {
+    const unlisten = listen<boolean>("listening-overlay", (event) => {
+      setOverlayActive(Boolean(event.payload));
+    });
+
+    return () => {
+      unlisten.then((off) => off());
+    };
+  }, []);
+
   // ── Position save / restore ──────────────────────────────────────────────
   useEffect(() => {
     const restorePosition = async () => {
@@ -339,6 +352,7 @@ const App: React.FC = () => {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="orb-stage">
+      <ListeningOverlay active={overlayActive} />
       <div
         className={`circle-icon ${orbState}`}
         onPointerDown={handlePointerDown}
