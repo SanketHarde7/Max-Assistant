@@ -1,6 +1,6 @@
 /**
  * 💬 Chat Panel — Glassmorphism Conversation Display
- * With text input, animated messages, typing indicator, and auto-scroll
+ * With text input, animated messages, typing indicator, auto-scroll, and IMAGE UPLOAD
  */
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -9,11 +9,16 @@ export default function ChatPanel({
   messages = [],
   isProcessing = false,
   onSendText,
+  onSendImage, // NAYA PROP: Image bhejne ke liye
   onClear,
   isVisible = true,
 }) {
   const [inputText, setInputText] = useState('')
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+  
   const scrollRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -25,12 +30,37 @@ export default function ChatPanel({
     }
   }, [messages, isProcessing])
 
+  // Handle file selection
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file && file.type.startsWith('image/')) {
+      setSelectedImage(file)
+      setPreviewUrl(URL.createObjectURL(file))
+    }
+  }
+
+  // Remove selected image
+  const removeImage = () => {
+    setSelectedImage(null)
+    setPreviewUrl(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     const text = inputText.trim()
-    if (!text || isProcessing) return
-    onSendText?.(text)
-    setInputText('')
+    if (isProcessing) return
+
+    if (selectedImage) {
+      // Send Image along with prompt text
+      onSendImage?.(selectedImage, text)
+      removeImage()
+      setInputText('')
+    } else if (text) {
+      // Send regular Text
+      onSendText?.(text)
+      setInputText('')
+    }
   }
 
   const handleKeyDown = (e) => {
@@ -103,12 +133,6 @@ export default function ChatPanel({
             transition: 'all 0.2s ease',
             fontFamily: "'Share Tech Mono', monospace",
           }}
-          onMouseEnter={(e) => {
-            e.target.style.background = 'rgba(255, 58, 58, 0.2)'
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.background = 'rgba(255, 58, 58, 0.1)'
-          }}
         >
           🗑️ CLEAR
         </button>
@@ -143,10 +167,7 @@ export default function ChatPanel({
               <div style={{ fontSize: '2.5rem', marginBottom: '1rem', opacity: 0.5 }}>
                 🎙️
               </div>
-              <p>Hold the mic button or type below</p>
-              <p style={{ marginTop: '0.5rem', opacity: 0.6, fontSize: '0.8rem' }}>
-                Try: "What's the weather in Pune?"
-              </p>
+              <p>Hold the mic button, type, or upload an image below</p>
             </motion.div>
           )}
 
@@ -242,64 +263,118 @@ export default function ChatPanel({
         </AnimatePresence>
       </div>
 
-      {/* Text Input */}
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          padding: '0.75rem 1rem',
-          borderTop: '1px solid rgba(0, 212, 255, 0.1)',
-          display: 'flex',
-          gap: '0.5rem',
-        }}
-      >
-        <input
-          id="chat-input"
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          disabled={isProcessing}
-          style={{
-            flex: 1,
-            background: 'rgba(0, 212, 255, 0.05)',
-            border: '1px solid rgba(0, 212, 255, 0.15)',
-            borderRadius: '10px',
-            padding: '0.6rem 1rem',
-            color: 'var(--text-primary)',
-            fontSize: '0.85rem',
-            outline: 'none',
-            transition: 'border-color 0.2s ease',
-          }}
-          onFocus={(e) => {
-            e.target.style.borderColor = 'rgba(0, 212, 255, 0.4)'
-          }}
-          onBlur={(e) => {
-            e.target.style.borderColor = 'rgba(0, 212, 255, 0.15)'
-          }}
-        />
-        <button
-          type="submit"
-          disabled={isProcessing || !inputText.trim()}
-          style={{
-            background: inputText.trim()
-              ? 'linear-gradient(135deg, #00d4ff, #00a0cc)'
-              : 'rgba(0, 212, 255, 0.1)',
-            border: 'none',
-            borderRadius: '10px',
-            padding: '0.6rem 1rem',
-            color: inputText.trim() ? '#050a0f' : 'var(--text-dim)',
-            fontWeight: 600,
-            fontSize: '0.85rem',
-            cursor: inputText.trim() ? 'pointer' : 'default',
-            transition: 'all 0.2s ease',
-            fontFamily: "'Orbitron', monospace",
-            letterSpacing: '1px',
-          }}
-        >
-          ↗
-        </button>
-      </form>
+      {/* Input Area (Preview + Text Input) */}
+      <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid rgba(0, 212, 255, 0.1)' }}>
+        
+        {/* Image Preview Block */}
+        {previewUrl && (
+          <div style={{ 
+            position: 'relative', 
+            marginBottom: '10px', 
+            display: 'inline-block' 
+          }}>
+            <img 
+              src={previewUrl} 
+              alt="Preview" 
+              style={{ 
+                height: '60px', 
+                borderRadius: '8px', 
+                border: '1px solid rgba(0, 212, 255, 0.4)' 
+              }} 
+            />
+            <button
+              onClick={removeImage}
+              style={{
+                position: 'absolute',
+                top: '-5px',
+                right: '-5px',
+                background: '#ff3a3a',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: '20px',
+                height: '20px',
+                cursor: 'pointer',
+                fontSize: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            ref={fileInputRef}
+            onChange={handleFileChange}
+          />
+          
+          {/* Attachment Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isProcessing}
+            style={{
+              background: 'rgba(0, 212, 255, 0.05)',
+              border: '1px solid rgba(0, 212, 255, 0.15)',
+              borderRadius: '10px',
+              padding: '0 0.8rem',
+              color: '#00d4ff',
+              cursor: isProcessing ? 'default' : 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            📎
+          </button>
+
+          {/* Text Input */}
+          <input
+            id="chat-input"
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message or image prompt..."
+            disabled={isProcessing}
+            style={{
+              flex: 1,
+              background: 'rgba(0, 212, 255, 0.05)',
+              border: '1px solid rgba(0, 212, 255, 0.15)',
+              borderRadius: '10px',
+              padding: '0.6rem 1rem',
+              color: 'var(--text-primary)',
+              fontSize: '0.85rem',
+              outline: 'none',
+            }}
+          />
+          
+          {/* Send Button */}
+          <button
+            type="submit"
+            disabled={isProcessing || (!inputText.trim() && !selectedImage)}
+            style={{
+              background: (inputText.trim() || selectedImage)
+                ? 'linear-gradient(135deg, #00d4ff, #00a0cc)'
+                : 'rgba(0, 212, 255, 0.1)',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '0.6rem 1rem',
+              color: (inputText.trim() || selectedImage) ? '#050a0f' : 'var(--text-dim)',
+              fontWeight: 600,
+              cursor: (inputText.trim() || selectedImage) ? 'pointer' : 'default',
+            }}
+          >
+            ↗
+          </button>
+        </form>
+      </div>
     </motion.div>
   )
-}
+}gi

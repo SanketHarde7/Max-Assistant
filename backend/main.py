@@ -350,6 +350,55 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                         except Exception as e:
                             logger.error(f"Voice TTS Read Error: {e}")
+                # 3.5 HANDLE IMAGE INPUT
+                elif msg_type == "image":
+                    image_data = msg.get("image_data", "")
+                    prompt = msg.get("prompt", "What is in this image?")
+                    
+                    if not image_data:
+                        continue
+                        
+                    logger.info(f"Received Image for analysis. Prompt: {prompt}")
+                    
+                    # Ensure base64 string doesn't have the data URI scheme attached
+                    if "," in image_data:
+                        image_data = image_data.split(",")[1]
+                        
+                    import uuid
+                    # Save base64 to a temporary physical file
+                    temp_filepath = config.DATA_DIR / f"temp_vision_{uuid.uuid4().hex}.jpg"
+                    
+                    try:
+                        with open(temp_filepath, "wb") as f:
+                            f.write(base64.b64decode(image_data))
+                            
+                        # Tell the UI we are analyzing it
+                        from modules.llm import analyze_image_with_prompt
+                        vision_response = await analyze_image_with_prompt(str(temp_filepath), prompt)
+                        
+                        # Send back the AI response
+                        await websocket.send_json({
+                            "event": "response_text",
+                            "text": vision_response,
+                            "skill_used": "vision",
+                        })
+                        
+                        # Trigger TTS so MAX speaks the analysis aloud
+                        tts_path = await generate_tts(vision_response[:300])
+                        if tts_path and os.path.exists(tts_path):
+                            with open(tts_path, "rb") as f:
+                                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                                await websocket.send_json({
+                                    "event": "audio_response",
+                                    "audio": encoded_audio
+                                })
+                    except Exception as e:
+                        logger.error(f"Vision error: {e}")
+                        await websocket.send_json({"event": "error", "message": "Failed to analyze image."})
+                    finally:
+                        # Ensure temp image is deleted to save space
+                        if os.path.exists(temp_filepath):
+                            os.remove(temp_filepath)                 
 
                 # 4. KEEPALIVE / PING
                 elif msg_type == "ping":

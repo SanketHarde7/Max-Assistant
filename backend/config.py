@@ -93,8 +93,7 @@ class Config:
     # ── AI Models ──
     LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "whisper-large-v3")
-    VISION_MODEL: str = os.getenv("VISION_MODEL", "llama-3.2-90b-vision-preview")
-
+    VISION_MODEL: str = os.getenv("VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
     # ── Agent Settings ──
     AGENT_MAX_STEPS: int = int(os.getenv("AGENT_MAX_STEPS", "10"))
     AGENT_CODE_TIMEOUT: int = int(os.getenv("AGENT_CODE_TIMEOUT", "30"))
