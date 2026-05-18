@@ -127,7 +127,7 @@ function App() {
     [playAudio]
   )
 
-  const { isConnected, sendVoice, sendText } = useWebSocket(
+  const { isConnected, sendVoice, sendText ,sendImage} = useWebSocket(
     'ws://localhost:8000/ws',
     { onEvent: handleWsEvent }
   )
@@ -266,6 +266,33 @@ function App() {
         setError(err.message)
         setMaxState('idle')
       }
+    }
+  }
+  // ── Image Handlers (NEW) ──
+  const handleSendImage = async (file, promptText) => {
+    if (jarvisState === 'thinking' || jarvisState === 'speaking') return
+
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content: `🖼️ [Image Attached] ${promptText}` },
+    ])
+    setMaxState('thinking')
+    setError(null)
+
+    try {
+      // Convert File Object to Base64 String
+      const base64 = await blobToBase64(file)
+
+      if (isConnected) {
+        // useWebSocket se naya sendImage function call hoga
+        sendImage(base64, promptText)
+      } else {
+        throw new Error('WebSocket disconnected. Please reconnect to send image.')
+      }
+    } catch (err) {
+      console.error('Image upload error:', err)
+      setError(err.message)
+      setMaxState('idle')
     }
   }
 
@@ -554,6 +581,7 @@ function App() {
             messages={messages}
             isProcessing={jarvisState === 'thinking'}
             onSendText={handleSendText}
+            onSendImage={handleSendImage} // NEW  
             onClear={handleClearChat}
             isVisible={chatOpen}
           />

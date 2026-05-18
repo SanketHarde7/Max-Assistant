@@ -149,3 +149,20 @@ fn exit_app(app_handle: tauri::AppHandle) {
     }
     std::process::exit(0);
 }
+#[tauri::command]
+fn start_listening_animation(app_handle: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(window) = app_handle.get_webview_window("overlay") {
+        // Ye line screen ko click-through banati hai
+        let _ = window.set_ignore_cursor_events(true);
+        let _ = window.show();
+    }
+}
+
+#[tauri::command]
+fn stop_listening_animation(app_handle: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(window) = app_handle.get_webview_window("overlay") {
+        let _ = window.hide();
+    }
+}

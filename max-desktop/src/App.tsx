@@ -3,20 +3,20 @@
  * Orb UI: centered, draggable, full voice pipeline.
  *
  * CLICK BEHAVIOR:
- *   Single click (idle)      → start listening (auto-stops on silence)
- *   Single click (listening) → force-stop recording, process immediately
- *   Single click (speaking)  → STOP MAX (kill audio playback)
- *   Single click (processing)→ ignored (wait for response)
- *   Double click             → open real frontend in system browser
- *   Long press + drag        → move the orb
+ * Single click (idle)      → start listening (auto-stops on silence)
+ * Single click (listening) → force-stop recording, process immediately
+ * Single click (speaking)  → STOP MAX (kill audio playback)
+ * Single click (processing)→ ignored (wait for response)
+ * Double click             → open real frontend in system browser
+ * Long press + drag        → move the orb
  *
  * ORB STATES:
- *   idle       → deep blue, slow rotation (default)
- *   listening  → lighter blue, fast pulse (recording + VAD active)
- *   processing → orange, energy swirl (audio sent, waiting for response)
- *   speaking   → purple, wave pulse (TTS playing)
- *   error      → red, shake (3s then idle)
- *   offline    → gray, dim pulse (WS disconnected)
+ * idle       → deep blue, slow rotation (default)
+ * listening  → lighter blue, fast pulse (recording + VAD active)
+ * processing → orange, energy swirl (audio sent, waiting for response)
+ * speaking   → purple, wave pulse (TTS playing)
+ * error      → red, shake (3s then idle)
+ * offline    → gray, dim pulse (WS disconnected)
  */
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
@@ -26,9 +26,8 @@ import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { useBackend, BackendMessage, BackendStatus } from "./hooks/useBackend";
 import { useVoice }         from "./hooks/useVoice";
+import { start_listening_animation, stop_listening_animation } from "./overlayController";
 import "./App.css";
-import "./ListeningOverlay.css";
-import { ListeningOverlay } from "./ListeningOverlay";
 
 const DRAG_THRESHOLD_MS         = 200;
 const POSITION_SAVE_DEBOUNCE_MS = 300;
@@ -43,7 +42,6 @@ const App: React.FC = () => {
   const [orbState, setOrbState]   = useState<OrbState>("idle");
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
-  const [overlayActive, setOverlayActive] = useState(false);
 
   const dragTimerRef     = useRef<number | null>(null);
   const dragStartedRef   = useRef(false);
@@ -54,6 +52,21 @@ const App: React.FC = () => {
   const clickCountRef    = useRef(0);
   const clickTimerRef    = useRef<number | null>(null);
   const pointerDownTime  = useRef(0);
+
+  // ── Rust Full Screen Border Trigger & LocalStorage Sync ──────────────────
+  useEffect(() => {
+    const activeStates = ["listening", "processing", "speaking"];
+
+    // 1. Fail-proof state sharing using localStorage
+    localStorage.setItem("max-overlay-state", orbState);
+
+    // 2. Trigger Rust to show/hide window
+    if (activeStates.includes(orbState)) {
+      start_listening_animation().catch(console.error);
+    } else {
+      stop_listening_animation().catch(console.error);
+    }
+  }, [orbState]);
 
   // ── Toast (transparent text, no window resize) ──────────────────────────
   const showToast = useCallback((text: string) => {
@@ -197,16 +210,6 @@ const App: React.FC = () => {
       showError("Could not open frontend");
     }
   }, [showError]);
-
-  useEffect(() => {
-    const unlisten = listen<boolean>("listening-overlay", (event) => {
-      setOverlayActive(Boolean(event.payload));
-    });
-
-    return () => {
-      unlisten.then((off) => off());
-    };
-  }, []);
 
   // ── Position save / restore ──────────────────────────────────────────────
   useEffect(() => {
@@ -352,7 +355,6 @@ const App: React.FC = () => {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="orb-stage">
-      <ListeningOverlay active={overlayActive} />
       <div
         className={`circle-icon ${orbState}`}
         onPointerDown={handlePointerDown}

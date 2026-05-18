@@ -1,7 +1,7 @@
 /**
  * 🔌 WebSocket Hook
  * Manages persistent WS connection with event-based message handling
- * Supports voice, text, and ping/pong keepalive
+ * Supports voice, text, image, and ping/pong keepalive
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 
@@ -119,5 +119,21 @@ export function useWebSocket(url, { onEvent } = {}) {
     return false
   }, [])
 
-  return { isConnected, sendVoice, sendText }
+  // ── NEW: Send Image Data ──
+  const sendImage = useCallback((base64Data, prompt) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({ 
+          type: 'image', 
+          image_data: base64Data, 
+          prompt: prompt || "What is in this image?" 
+        })
+      )
+      return true
+    }
+    console.warn('WebSocket not ready for image')
+    return false
+  }, [])
+
+  return { isConnected, sendVoice, sendText, sendImage }
 }

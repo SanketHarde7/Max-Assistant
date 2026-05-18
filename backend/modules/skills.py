@@ -98,7 +98,7 @@ class SkillsEngine:
         self._app_indexer     = None
         self.skills_registry  = self._register_skills()
         self._load_plugins()
-
+        self._init_forge() 
     # ── Lazy properties ──────────────────────────────────────
 
     @property
@@ -114,7 +114,13 @@ class SkillsEngine:
             from modules.file_manager import get_file_manager
             self._file_manager = get_file_manager(self.config)
         return self._file_manager
-
+    def _init_forge(self):
+        try:
+            from modules.skill_forge import get_skill_forge
+            get_skill_forge(self.config)
+            logger.info("⚙️  SkillForge ready")
+        except Exception as e:
+            logger.warning(f"SkillForge init failed (non-critical): {e}")
     @property
     def email_agent(self):
         if not self._email_agent:
@@ -216,6 +222,7 @@ class SkillsEngine:
             "lock_pc":           self._skill_lock_pc,
             "system_shutdown":   self._skill_system_shutdown,
             "system_restart":    self._skill_system_restart,
+            "forge":             self._skill_forge_trigger,
             "whatsapp_message":  self._skill_whatsapp_message,
             "type_text":         self._skill_type_text,
             # Email
@@ -272,8 +279,15 @@ class SkillsEngine:
         clean_text = re.sub(r' {2,}', ' ', self.SKILL_PATTERN.sub("", response_text)).strip()
 
         if skill_name not in self.skills_registry:
-            logger.warning(f"Unknown skill: {skill_name}")
-            return {"executed": False, "clean_text": clean_text, "is_data_skill": False}
+           logger.warning(f"Unknown skill: {skill_name}")
+           try:
+               from modules.skill_forge import get_skill_forge
+               get_skill_forge(self.config).record_unknown_skill(
+                   skill_name, memory_context
+               )
+           except Exception as _sfe:
+            logger.error(f"SkillForge trigger FAILED: {_sfe}", exc_info=True)
+           return {"executed": False, "clean_text": clean_text, "is_data_skill": False}
 
         try:
             logger.info(f"⚙️  {skill_name}({params})")
@@ -329,18 +343,16 @@ class SkillsEngine:
     # ════════════════════════════════════════════
 
     def _skill_reminder_set(self, *args) -> str:
-        from modules.reminder_agent import set_reminder
-        if len(args) < 2:
-            return "Usage: reminder_set:text:YYYY-MM-DD:HH:MM"
-        return set_reminder(self.config, args[0], args[1], args[2] if len(args) > 2 else "09:00")
-
+        from modules.reminder_scheduler import skill_reminder_set
+        return skill_reminder_set(self.config, *args)
+ 
     def _skill_reminder_list(self, *args) -> str:
-        from modules.reminder_agent import list_reminders
-        return list_reminders(self.config)
-
+        from modules.reminder_scheduler import skill_reminder_list
+        return skill_reminder_list(self.config)
+ 
     def _skill_reminder_clear(self, *args) -> str:
-        from modules.reminder_agent import clear_reminders
-        return clear_reminders(self.config)
+        from modules.reminder_scheduler import skill_reminder_clear
+        return skill_reminder_clear(self.config)
 
     # ════════════════════════════════════════════
     # CODE / FILE WRAPPERS
@@ -408,6 +420,36 @@ class SkillsEngine:
             pass
         webbrowser.open(f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}")
         return f"Opened search for '{query}'."
+    def _skill_forge_trigger(self, *args) -> str:
+        """
+        Manually trigger SkillForge by voice.
+        Tag: [SKILL:forge:skill description here]
+        Example: "MAX, forge karo — wikipedia se search karna hai"
+        """
+        if not args:
+            return "which skill do you want boss ?— forge karo: XYZ skill description"
+ 
+        gap         = " ".join(args).strip()
+        user_request = gap
+ 
+        try:
+            from modules.skill_forge import get_skill_forge
+            forge = get_skill_forge(self.config)
+ 
+            if forge._forging:
+                return "sir skill creation is in use ,please wait a little."
+ 
+            forge.record_unknown_skill(
+                skill_name   = gap.split()[0].lower().replace(" ", "_"),
+                user_request = user_request
+            )
+            return f"SkillForge is started for — '{gap}'. i will tell you when the skill is ready for you ."
+ 
+        except Exception as e:
+            logger.error(f"Manual forge failed: {e}", exc_info=True)
+            return f"Forge trigger fail hua: {e}"
+ 
+
 
     def _skill_google_search(self, *args) -> str:
         """Open Google search in browser."""

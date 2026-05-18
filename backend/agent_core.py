@@ -52,7 +52,11 @@ class MaxAgent:
         self.skills     = get_skills_engine(config)
         self.gatekeeper = get_gatekeeper()
         self.intent_engine = get_intent_engine(config)
-
+     # ── Real-time reminder scheduler ──────────────────────
+        from modules.reminder_scheduler import get_scheduler
+        get_scheduler(config).start()
+        # Daemon thread — auto-stops when process exits.
+     
     async def process_text_input(self, text: str, use_tts: bool = True, input_source: str = "unknown") -> Dict[str, Any]:
         try:
             await self.memory.add_message("user", text)

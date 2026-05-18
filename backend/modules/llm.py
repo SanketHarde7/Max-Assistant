@@ -195,6 +195,25 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:kb_list]                        — List documents in knowledge base
 [SKILL:kb_stats]                       — Knowledge base statistics
 
+[SKILL:reminder_set:TIME:TEXT]
+  — Set a real-time reminder. MAX will proactively speak at due time.
+  — TIME: "1:00pm", "14:30", "1pm", "tomorrow 9am"
+  — TEXT: what to remind about
+  — Example: User says "1 baje remind karo meeting ke liye"
+             → [SKILL:reminder_set:1:00pm:meeting]
+ 
+[SKILL:reminder_list]
+  — List all pending reminders
+ 
+[SKILL:reminder_clear]
+  — Clear all pending reminders
+  
+  [SKILL:forge:DESCRIPTION]
+  — Manually trigger SkillForge to build a new skill.
+  — Use when user says "forge karo", "naya skill banao", "create skill for X"
+  — DESCRIPTION: what the skill should do
+  — Example: User: "wikipedia search karne ki skill banao"
+             → [SKILL:forge:wikipedia search skill — fetch summary from wikipedia api]
 ══════════════════════════════════════
 DECISION GUIDE — skill or no skill?
 ══════════════════════════════════════
@@ -400,8 +419,19 @@ async def get_response(user_text: str, memory_context: str = "", allow_skills: b
         return {"response": "Taking too long. Try again.", "skill": None}
     except Exception as e:
         logger.error(f"LLM error: {e}")
-        return {"response": "Something went wrong. Try again.", "skill": None}
-
+        result = {"response": clean, "skill": skill}
+ 
+        # Soft gap trigger — if no skill fired AND response signals a gap
+    if not skill:
+        try:
+            from modules.skill_forge import get_skill_forge
+            from config import config as _cfg
+            get_skill_forge(_cfg).record_gap(user_text, clean)
+        except Exception as _gfe:
+            logger.error(f"SkillForge gap trigger FAILED: {_gfe}", exc_info=True)
+ 
+        return result
+     
 
 async def get_response_with_skill_result(user_text: str, skill_result_text: str, memory_context: str = "") -> dict:
     try:

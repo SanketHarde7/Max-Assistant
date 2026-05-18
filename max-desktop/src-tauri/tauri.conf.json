@@ -24,6 +24,16 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "center": false
+      },
+      {
+        "label": "overlay",
+        "title": "MAX Overlay",
+        "fullscreen": true,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {

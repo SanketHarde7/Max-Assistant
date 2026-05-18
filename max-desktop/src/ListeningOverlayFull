@@ -1,0 +1,17 @@
+import React, { useEffect } from "react";
+import "./ListeningOverlayFull.css";
+
+export const ListeningOverlayFull: React.FC = () => {
+  // Is file mein body ka background hide karna zaroori hai
+  useEffect(() => {
+    document.body.style.background = "transparent";
+    document.body.style.overflow = "hidden";
+  }, []);
+
+  return (
+    <div className="premium-overlay-container" aria-hidden="true">
+      <div className="premium-border" />
+      <div className="premium-glow" />
+    </div>
+  );
+};

@@ -1,0 +1,136 @@
+/* Windows WebView2 fix: Forces absolute transparency at root level */
+html, body {
+  background-color: transparent !important;
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.gas-overlay-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden; 
+}
+
+/* CROSSFADE LOGIC: Smooth transition between colors */
+.theme-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.8s ease-in-out, visibility 0.8s;
+}
+
+.theme-layer.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Base style har edge/gas cloud ke liye */
+.gas-edge {
+  position: absolute;
+  /* Blur adjusted for 20px thickness to keep it looking like gas but rich in color */
+  filter: blur(8px); 
+  opacity: 1; 
+}
+
+/* TOP EDGE */
+.gas-top {
+  top: 0px; 
+  left: -5%;
+  right: -5%;
+  height: 20px; /* 30px - 10px = 20px */
+  background-size: 200% 100%;
+  animation: gasFlowHorizontal 4s linear infinite, gasPulse 3s ease-in-out infinite alternate;
+}
+
+/* BOTTOM EDGE */
+.gas-bottom {
+  bottom: 0px;
+  left: -5%;
+  right: -5%;
+  height: 20px; /* 30px - 10px = 20px */
+  background-size: 200% 100%;
+  animation: gasFlowHorizontal 5s linear infinite, gasPulse 3.5s ease-in-out infinite alternate;
+}
+
+/* LEFT EDGE */
+.gas-left {
+  top: -5%;
+  bottom: -5%;
+  left: 0px;
+  width: 20px; /* 30px - 10px = 20px */
+  background-size: 100% 200%;
+  animation: gasFlowVertical 4.5s linear infinite, gasPulse 3.2s ease-in-out infinite alternate;
+}
+
+/* RIGHT EDGE */
+.gas-right {
+  top: -5%;
+  bottom: -5%;
+  right: 0px;
+  width: 20px; /* 30px - 10px = 20px */
+  background-size: 100% 200%;
+  animation: gasFlowVertical 4.2s linear infinite, gasPulse 3.8s ease-in-out infinite alternate;
+}
+
+/* ════════════ THEME GRADIENT COLORS (Deep & Dark) ════════════ */
+
+/* 1. LISTENING THEME (Deep Blues & Cyan) */
+.theme-listening.gas-top, .theme-listening.gas-bottom {
+  background-image: linear-gradient(90deg, #0d47a1, #00e5ff, #651fff, #00e5ff, #0d47a1);
+}
+.theme-listening.gas-left, .theme-listening.gas-right {
+  background-image: linear-gradient(180deg, #0d47a1, #00e5ff, #651fff, #00e5ff, #0d47a1);
+}
+
+/* 2. PROCESSING THEME (Deep Orange, Warm Amber, Red) */
+.theme-processing.gas-top, .theme-processing.gas-bottom {
+  background-image: linear-gradient(90deg, #e65100, #ffb300, #dd2c00, #ffb300, #e65100);
+}
+.theme-processing.gas-left, .theme-processing.gas-right {
+  background-image: linear-gradient(180deg, #e65100, #ffb300, #dd2c00, #ffb300, #e65100);
+}
+
+/* 3. SPEAKING THEME (Deep Purple, Neon Pink, Violet) */
+.theme-speaking.gas-top, .theme-speaking.gas-bottom {
+  background-image: linear-gradient(90deg, #4a148c, #f50057, #aa00ff, #f50057, #4a148c);
+}
+.theme-speaking.gas-left, .theme-speaking.gas-right {
+  background-image: linear-gradient(180deg, #4a148c, #f50057, #aa00ff, #f50057, #4a148c);
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+
+.ambient-screen-glow {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.15); 
+}
+
+@keyframes gasFlowHorizontal {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+@keyframes gasFlowVertical {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 0% 200%; }
+}
+
+/* Dynamic pulse ranges from 6px to 10px blur for 20px thickness */
+@keyframes gasPulse {
+  0% { 
+    opacity: 0.85; 
+    filter: blur(6px); 
+  }
+  100% { 
+    opacity: 1; 
+    filter: blur(10px); 
+  }
+}
