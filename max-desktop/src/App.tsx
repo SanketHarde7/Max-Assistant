@@ -5,8 +5,8 @@
  * CLICK BEHAVIOR:
  * Single click (idle)      → start listening (auto-stops on silence)
  * Single click (listening) → force-stop recording, process immediately
- * Single click (speaking)  → STOP MAX (kill audio playback)
- * Single click (processing)→ ignored (wait for response)
+ * Single click (speaking)  → STOP MAX (kill audio playback & abort)
+ * Single click (processing)→ STOP MAX (abort backend request)
  * Double click             → open real frontend in system browser
  * Long press + drag        → move the orb
  *
@@ -86,16 +86,29 @@ const App: React.FC = () => {
     }, 3_000);
   }, []);
 
-  // ── Stop audio playback (kill MAX speaking) ─────────────────────────────
+  // ── Stop audio playback ──────────────────────────────────────────────────
   const stopSpeaking = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
       audioRef.current = null;
     }
+  }, []);
+
+  // ── ✨ TERMINATION LOGIC (FORCE STOP) ✨ ────────────────────────────────
+  const handleForceStop = useCallback(async () => {
+    // 1. Backend ke /api/stop endpoint ko hit karo (agar stuck hai toh abort ho jayega)
+    try {
+      await fetch("http://localhost:8000/api/stop", { method: "POST" });
+    } catch (err) {
+      console.warn("Backend /api/stop unreachable or already stopped:", err);
+    }
+
+    // 2. Frontend UI aur Audio ko forcibly reset karo
+    stopSpeaking();
     setOrbState("idle");
-    showToast("⏹ Stopped");
-  }, [showToast]);
+    showToast("🛑 Terminated");
+  }, [stopSpeaking, showToast]);
 
   // ── Audio playback ───────────────────────────────────────────────────────
   const playAudio = useCallback((rawBase64: string) => {
@@ -174,14 +187,11 @@ const App: React.FC = () => {
 
   // ── Core action: handle single click logic ──────────────────────────────
   const handleSingleClick = useCallback(() => {
-    // While speaking → STOP MAX
-    if (orbState === "speaking") {
-      stopSpeaking();
+    // Agar MAX speaking ya processing state mein hai, toh ek click se seedha FORCE STOP
+    if (orbState === "speaking" || orbState === "processing") {
+      handleForceStop();
       return;
     }
-
-    // While processing → ignore
-    if (orbState === "processing") return;
 
     // While offline → show error
     if (orbState === "offline") {
@@ -189,7 +199,7 @@ const App: React.FC = () => {
       return;
     }
 
-    // While listening → force stop immediately
+    // While listening → force stop immediately and process
     if (isRecording) {
       stopRecording();
       setOrbState("processing");
@@ -199,7 +209,7 @@ const App: React.FC = () => {
     // Idle / error → start listening
     startRecording();
     setOrbState("listening");
-  }, [orbState, isRecording, startRecording, stopRecording, stopSpeaking, showError]);
+  }, [orbState, isRecording, startRecording, stopRecording, handleForceStop, showError]);
 
   // ── Double-click: open real frontend ─────────────────────────────────────
   const handleOpenFrontend = useCallback(async () => {
@@ -337,7 +347,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isRecording && orbState === "listening") {
       // VAD auto-stopped → already transitioning to processing via onAudioReady
-      // This is a safety fallback
     }
   }, [isRecording, orbState]);
 
@@ -354,7 +363,9 @@ const App: React.FC = () => {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="orb-stage">
+    <div className="orb-stage" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      
+      {/* 🔮 The Core Orb */}
       <div
         className={`circle-icon ${orbState}`}
         onPointerDown={handlePointerDown}
@@ -364,7 +375,7 @@ const App: React.FC = () => {
         title={
           orbState === "offline"    ? "Backend offline — reconnecting..." :
           orbState === "listening"  ? "Listening... click to stop & send" :
-          orbState === "processing" ? "Processing..." :
+          orbState === "processing" ? "Processing... click to abort" :
           orbState === "speaking"   ? "Click to stop speaking" :
           orbState === "error"      ? errorMsg :
           "Click to speak • Double-click to open • Drag to move"
@@ -376,6 +387,36 @@ const App: React.FC = () => {
         <div className="orb-ring" />
         <div className="orb-particles" />
       </div>
+
+      {/* 🛑 Explicit Stop Button (Visible only when processing or speaking) */}
+      {(orbState === "processing" || orbState === "speaking") && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleForceStop();
+          }}
+          style={{
+            marginTop: "15px",
+            padding: "0.5rem 1.2rem",
+            fontSize: "0.75rem",
+            fontWeight: 600,
+            fontFamily: "'Orbitron', monospace",
+            background: "rgba(255, 58, 58, 0.15)",
+            color: "#ff3a3a",
+            border: "1px solid rgba(255, 58, 58, 0.4)",
+            borderRadius: "12px",
+            cursor: "pointer",
+            boxShadow: "0 0 10px rgba(255, 58, 58, 0.2)",
+            transition: "all 0.2s ease",
+            zIndex: 100,
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 58, 58, 0.3)"}
+          onMouseLeave={(e) => e.currentTarget.style.background = "rgba(255, 58, 58, 0.15)"}
+        >
+          🛑 STOP MAX
+        </button>
+      )}
+
       {toastText && (
         <div className="toast">{toastText}</div>
       )}

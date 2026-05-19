@@ -525,7 +525,7 @@ class SkillForgeEngine:
         Blocks forge for CONVERSATION, CAPABILITY_QUESTION, NEGATIVE_COMMAND.
         """
         try:
-            from modules.intent_engine import get_intent_engine
+            from modules.Intent_engine import get_intent_engine
             engine = get_intent_engine(self.config)
             intent = await asyncio.wait_for(engine.classify(user_request), timeout=8.0)
 
@@ -636,7 +636,8 @@ class SkillForgeEngine:
 
     def _reload_registry(self):
         try:
-            from skills import get_skills_engine
+            # FIX: Sahi path lagaya gaya hai ('modules.skills')
+            from modules.skills import get_skills_engine
             engine = get_skills_engine(self.config)
             engine.plugin_loader.reload()
             engine.skills_registry = engine._register_skills()
@@ -647,12 +648,7 @@ class SkillForgeEngine:
     # ── Notifications ──────────────────────────────────────────
 
     async def _notify_success(self, skill_name: str, elapsed: float):
-        """
-        Tells Sanket what was built and exactly how to trigger it.
-        Format: "Boss, maine X skill banayi. Y command se trigger karo."
-        """
         readable = skill_name.replace("_", " ")
-        trigger  = f"[SKILL:{skill_name}]"
         message  = (
             f"Boss, maine {readable} skill banayi hai. "
             f"Isko trigger karne ke liye '{skill_name}' bolo. "
@@ -664,10 +660,6 @@ class SkillForgeEngine:
     async def _notify_review_needed(
         self, skill_name: str, difficulty: DifficultyResult, code: str
     ):
-        """
-        INTERMEDIATE/HARD skill — Sanket ko batao, auto-install nahi.
-        Saves the generated code to a review folder for manual inspection.
-        """
         review_dir = self.base_dir / "skill_forge_review"
         review_dir.mkdir(exist_ok=True)
         review_path = review_dir / f"{skill_name}.py"
@@ -678,18 +670,22 @@ class SkillForgeEngine:
         message  = (
             f"Boss, maine {readable} skill try ki. "
             f"Yeh {difficulty.level} level hai — {reasons}. "
-            f"Auto-install nahi kiya. skill_forge_review folder mein code hai, "
-            f"manually check karke install kar sakte ho."
+            f"Auto-install nahi kiya. skill_forge_review folder mein code hai."
         )
         logger.info(f"SkillForge notify (review needed): {message}")
         await self._speak(message)
 
     async def _speak(self, text: str):
         try:
-            from tts_engine import speak
-            await speak(text)
+            # FIX: tts_engine backend loop me block karta hai, isliye hum desktop notification use karenge.
+            from plyer import notification
+            notification.notify(
+                title="MAX SkillForge", 
+                message=text, 
+                timeout=8
+            )
         except Exception as e:
-            logger.warning(f"SkillForge TTS failed — {e}. Message: {text}")
+            logger.warning(f"SkillForge notification skipped — {e}. Message: {text}")
 
     # ── Utilities ─────────────────────────────────────────────
 

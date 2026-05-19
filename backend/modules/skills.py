@@ -723,6 +723,7 @@ class SkillsEngine:
         "skype":            "skype:",
     }
     _WIN_DIRECT: Dict[str, str] = {
+        
         "notepad":              "notepad.exe",
         "calculator":           "calc.exe",
         "calc":                 "calc.exe",
@@ -736,35 +737,37 @@ class SkillsEngine:
         "file explorer":        "explorer.exe",
         "task manager":         "taskmgr.exe",
         "taskmgr":              "taskmgr.exe",
-        "chrome":               "chrome",
-        "google chrome":        "chrome",
-        "firefox":              "firefox",
-        "edge":                 "msedge",
-        "brave":                "brave",
-        "opera":                "opera",
-        "vscode":               "code",
-        "vs code":              "code",
-        "visual studio code":   "code",
-        "word":                 "winword",
-        "excel":                "excel",
-        "powerpoint":           "powerpnt",
-        "outlook":              "outlook",
-        "vlc":                  "vlc",
-        "obs":                  "obs64",
-        "pycharm":              "pycharm64",
-        "postman":              "postman",
-        "figma":                "figma",
+        "chrome":               "start chrome",
+        "google chrome":        "start chrome",
+        "edge":                 "start msedge",
+        "antigravity":          "start antigravity",
+        "opera":                "start opera",
+        "vscode":               "start vscode",
+        "vs code":              "start vscode",
+        "visual studio code":   "start vscode",
+        "word":                 "start winword",
+        "excel":                "start excel",
+        "powerpoint":           "start powerpnt",
+        "outlook":              "start outlook",
+        "vlc":                  "start vlc",
+        "postman":              "start postman",
+        # "obs":                  "start obs64",
+        # "pycharm":              "start pycharm64",
+        # "figma":                "start figma",
     }
 
-    def _skill_open_app(self, app_name: str = "", **kw) -> str:
-        if not app_name:
+    def _skill_open_app(self, *args, **kw) -> str:
+        if not args:
             return "Which app should I open?"
+            
+        # LLM kabhi-kabhi 'name:opera' bhejta hai, toh hum aakhri wala word lenge
+        app_name = args[-1].strip()
+        
         system    = platform.system()
         app_lower = app_name.lower().strip()
         web_map   = getattr(self.config, 'WEB_FALLBACK_MAP', {})
 
         if system == "Windows":
-            # Step 1: Protocol handler (WhatsApp, Spotify, Discord, etc.)
             proto = self._WIN_PROTOCOLS.get(app_lower)
             if proto:
                 try:
@@ -773,7 +776,6 @@ class SkillsEngine:
                 except Exception as e:
                     logger.warning(f"Protocol failed for '{app_name}': {e}")
 
-            # Step 2: Direct exe map
             exe = self._WIN_DIRECT.get(app_lower)
             if exe:
                 try:
@@ -782,7 +784,6 @@ class SkillsEngine:
                 except Exception as e:
                     logger.warning(f"Direct exe failed for '{app_name}': {e}")
 
-            # Step 3: App indexer (fuzzy search across all installed apps)
             try:
                 match = self.app_indexer.find_app(app_lower)
                 if match:
@@ -792,7 +793,6 @@ class SkillsEngine:
             except Exception as e:
                 logger.warning(f"App indexer failed for '{app_name}': {e}")
 
-            # Step 4: Shell fallback
             try:
                 subprocess.Popen(app_lower, shell=True)
                 return f"{app_name} opened."
@@ -814,7 +814,6 @@ class SkillsEngine:
             except Exception:
                 pass
 
-        # Web fallback for known apps (YouTube, GitHub, etc.)
         fallback = web_map.get(app_lower)
         if fallback:
             webbrowser.open(fallback)
