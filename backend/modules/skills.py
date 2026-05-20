@@ -222,9 +222,9 @@ class SkillsEngine:
             "lock_pc":           self._skill_lock_pc,
             "system_shutdown":   self._skill_system_shutdown,
             "system_restart":    self._skill_system_restart,
-            "forge":             self._skill_forge_trigger,
             "whatsapp_message":  self._skill_whatsapp_message,
             "type_text":         self._skill_type_text,
+            "quit_max":          self._skill_quit_max,  # 👈 FIX: Added Quit Max here
             # Email
             "email_send":        self._skill_email_send,
             "email_check":       self._skill_email_check,
@@ -250,6 +250,13 @@ class SkillsEngine:
             "kb_list":           self._skill_kb_list,
             "kb_stats":          self._skill_kb_stats,
         }
+        try:
+            pl = self.plugin_loader
+            for name in pl.handlers:
+                base[name] = lambda *args, n=name: pl.execute(n, *args)
+        except Exception:
+            pass
+        return base
         try:
             pl = self.plugin_loader
             for name in pl.handlers:
@@ -839,30 +846,16 @@ class SkillsEngine:
             return f"Rebuild failed: {e}"
 
     def _skill_web_open(self, url: str = "", **kw) -> str:
-        """
-        Open a URL in the default browser.
-
-        FIX: LLM sometimes outputs [SKILL:web_open:url=https://...] with the
-        parameter name included. Strip `url=` prefix before processing.
-        """
         if not url:
             return "Provide a URL."
-        url = url.strip()
-
-        # Strip parameter-name prefix the LLM sometimes emits (e.g. url=https://...)
-        if url.lower().startswith("url="):
-            url = url[4:].strip()
-        # Also handle href= prefix
-        if url.lower().startswith("href="):
-            url = url[5:].strip()
-
-        # Ensure protocol
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-
         try:
-            webbrowser.open(url)
-            return "URL opened in browser."
+            import time
+            # open_new_tab is much more reliable when the browser is already running
+            webbrowser.open_new_tab(url)
+            time.sleep(0.5) # Give OS half a second to process the command
+            return f"URL opened in browser: {url}"
         except Exception as e:
             return f"Could not open URL: {e}"
 
@@ -1093,6 +1086,19 @@ class SkillsEngine:
             )
         except Exception as e:
             return f"KB stats failed: {e}"
+    # ════════════════════════════════════════════
+    # NEW QUIT SKILL
+    # ════════════════════════════════════════════
+    
+    def _skill_quit_max(self, *args) -> str:
+        """Sends hide signal to frontend, speaks goodbye, then kills backend."""
+        def _shutdown_timer():
+            time.sleep(4)  # Wait 4 seconds for audio to play
+            logger.info("MAX Backend is shutting down completely (Headless mode active).")
+            os._exit(0) # 👈 Ye Python process ko RAM/CPU se permanently hata dega
+            
+        threading.Thread(target=_shutdown_timer, daemon=True).start()
+        return "[ACTION:HIDE_ORB] Shutting down my systems now. Click my tray icon if you need me!"    
 
 
 # ══════════════════════════════════════════

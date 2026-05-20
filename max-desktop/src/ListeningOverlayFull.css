@@ -35,8 +35,44 @@ html, body {
 .gas-edge {
   position: absolute;
   /* Blur adjusted for 10px thickness to keep it looking like gas but rich in color */
-  filter: blur(5px); 
-  opacity: 1; 
+  filter: blur(5px);
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.8s cubic-bezier(0.2, 0.65, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.theme-layer .gas-top {
+  transform: scaleY(0.2);
+  transform-origin: top center;
+}
+
+.theme-layer .gas-bottom {
+  transform: scaleY(0.2);
+  transform-origin: bottom center;
+}
+
+.theme-layer .gas-left {
+  transform: scaleX(0.2);
+  transform-origin: center left;
+}
+
+.theme-layer .gas-right {
+  transform: scaleX(0.2);
+  transform-origin: center right;
+}
+
+.theme-layer.active .gas-edge {
+  opacity: 1;
+}
+
+.theme-layer.active .gas-top,
+.theme-layer.active .gas-bottom {
+  transform: scaleY(1);
+}
+
+.theme-layer.active .gas-left,
+.theme-layer.active .gas-right {
+  transform: scaleX(1);
 }
 
 /* TOP EDGE */
