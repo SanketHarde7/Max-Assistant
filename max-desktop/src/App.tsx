@@ -1,10 +1,19 @@
 /**
  * App.tsx — MAX v4.4
  * Orb UI: centered, draggable, full voice pipeline.
+ *
+ * CLICK BEHAVIOR:
+ * Single click (idle)      → start listening (auto-stops on silence)
+ * Single click (listening) → force-stop recording, process immediately
+ * Single click (speaking)  → STOP MAX (kill audio playback & abort)
+ * Single click (processing)→ STOP MAX (abort backend request)
+ * Double click             → open real frontend in system browser
+ * Long press + drag        → move the orb
  */
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { listen }           from "@tauri-apps/api/event";
+import { invoke }           from "@tauri-apps/api/core"; // 👈 Rust API import
 import { openUrl }          from "@tauri-apps/plugin-opener";
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
@@ -36,6 +45,11 @@ const App: React.FC = () => {
   const clickCountRef    = useRef(0);
   const clickTimerRef    = useRef<number | null>(null);
   const pointerDownTime  = useRef(0);
+
+  const hibernateTimerRef = useRef<number | null>(null);
+  const hibernateInFlightRef = useRef(false);
+
+  const shouldHibernateRef = useRef(false);
 
   useEffect(() => {
     const activeStates = ["listening", "processing", "speaking"];
@@ -82,7 +96,29 @@ const App: React.FC = () => {
     showToast("🛑 Terminated");
   }, [stopSpeaking, showToast]);
 
-  const playAudio = useCallback((rawBase64: string) => {
+  const triggerHibernate = useCallback(async (reason: string) => {
+    if (hibernateInFlightRef.current) return;
+    hibernateInFlightRef.current = true;
+
+    if (hibernateTimerRef.current) {
+      clearTimeout(hibernateTimerRef.current);
+      hibernateTimerRef.current = null;
+    }
+
+    stopSpeaking();
+    setOrbState("idle");
+
+    try {
+      console.log(`Hibernate triggered: ${reason}`);
+      await invoke("hibernate_backend");
+    } catch (e) {
+      console.error("Failed to invoke Rust hibernate:", e);
+    } finally {
+      hibernateInFlightRef.current = false;
+    }
+  }, [stopSpeaking]);
+
+  const playAudio = useCallback((rawBase64: string, hibernateAfter: boolean = false) => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -90,19 +126,33 @@ const App: React.FC = () => {
     setOrbState("speaking");
     const audio = new Audio(`data:audio/mp3;base64,${rawBase64}`);
     audioRef.current = audio;
-    audio.onended = () => {
+    
+    // Yahan magic hoga: Audio puri hote hi Rust Boss ko signal jayega
+    audio.onended = async () => {
       audioRef.current = null;
       setOrbState("idle");
+      
+      if (hibernateAfter) {
+        console.log("Audio finished. Handing over to Rust Dictator...");
+        await triggerHibernate("audio-ended");
+      }
     };
+    
     audio.onerror = () => {
       audioRef.current = null;
       setOrbState("idle");
+      if (hibernateAfter) {
+        void triggerHibernate("audio-error");
+      }
     };
     audio.play().catch(() => {
       audioRef.current = null;
       setOrbState("idle");
+      if (hibernateAfter) {
+        void triggerHibernate("audio-play-failed");
+      }
     });
-  }, []);
+  }, [triggerHibernate]);
 
   const handleBackendMessage = useCallback((msg: BackendMessage) => {
     switch (msg.event) {
@@ -113,19 +163,37 @@ const App: React.FC = () => {
         break;
       case "response_text":
         if (msg.text) {
-          // 🔴 FIX: Hide IMMEDIATELY on receiving the quit command!
-          if (msg.text.includes("[ACTION:HIDE_ORB]")) {
-            mainWindowRef.current.hide().catch(console.error);
+          if (msg.text.includes("[ACTION:HIBERNATE]")) {
+            console.log("HIBERNATE TAG RECEIVED!");
+            shouldHibernateRef.current = true;
+
+            if (hibernateTimerRef.current) clearTimeout(hibernateTimerRef.current);
+            hibernateTimerRef.current = window.setTimeout(() => {
+              if (shouldHibernateRef.current) {
+                void triggerHibernate("response-fallback");
+                shouldHibernateRef.current = false;
+              }
+            }, 1200);
           }
-          const cleanText = msg.text.replace("[ACTION:HIDE_ORB]", "").trim();
+          const cleanText = msg.text.replace("[ACTION:HIBERNATE]", "").trim();
           if (cleanText) showToast(cleanText);
         }
         break;
       case "audio_response":
         if (msg.audio) {
-          playAudio(msg.audio);
+          if (hibernateTimerRef.current) {
+            clearTimeout(hibernateTimerRef.current);
+            hibernateTimerRef.current = null;
+          }
+          playAudio(msg.audio, shouldHibernateRef.current);
+          shouldHibernateRef.current = false; 
         } else {
           setOrbState("idle");
+          // Agar audio hi nahi aayi, toh seedha Rust ko bulao
+          if (shouldHibernateRef.current) {
+            void triggerHibernate("no-audio");
+            shouldHibernateRef.current = false;
+          }
         }
         break;
       case "error":
@@ -134,15 +202,14 @@ const App: React.FC = () => {
       default:
         break;
     }
-  }, [showToast, showError, playAudio]);
+  }, [showToast, showError, playAudio, triggerHibernate]);
 
   const handleStatusChange = useCallback((status: BackendStatus) => {
     if (status === "connected") {
       setOrbState(prev => prev === "offline" ? "idle" : prev);
     } else if (status === "offline" || status === "disconnected") {
-      // 🔴 FIX: Only set to offline if the window is actually visible
       mainWindowRef.current.isVisible().then(visible => {
-          if(visible) setOrbState("offline");
+          if (visible) setOrbState("offline");
       });
     }
   }, []);
@@ -183,6 +250,7 @@ const App: React.FC = () => {
     try {
       await openUrl("http://localhost:5173");
     } catch (err) {
+      console.error("Failed to open frontend:", err);
       showError("Could not open frontend");
     }
   }, [showError]);
@@ -252,7 +320,9 @@ const App: React.FC = () => {
       try {
         await mainWindowRef.current.startDragging();
         dragStartedRef.current = true;
-      } catch (err) {}
+      } catch (err) {
+        console.error("startDragging failed:", err);
+      }
     }, DRAG_THRESHOLD_MS);
   }, []);
 
@@ -280,17 +350,24 @@ const App: React.FC = () => {
   }, [handleSingleClick, handleOpenFrontend]);
 
   useEffect(() => {
+    if (!isRecording && orbState === "listening") {
+    }
+  }, [isRecording, orbState]);
+
+  useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       if (dragTimerRef.current) clearTimeout(dragTimerRef.current);
+      if (hibernateTimerRef.current) clearTimeout(hibernateTimerRef.current);
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
     };
   }, []);
 
   return (
     <div className="orb-stage" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      
       <div
         className={`circle-icon ${orbState}`}
         onPointerDown={handlePointerDown}
@@ -303,7 +380,10 @@ const App: React.FC = () => {
         <div className="orb-ring" />
         <div className="orb-particles" />
       </div>
-      {toastText && <div className="toast">{toastText}</div>}
+
+      {toastText && (
+        <div className="toast">{toastText}</div>
+      )}
     </div>
   );
 };

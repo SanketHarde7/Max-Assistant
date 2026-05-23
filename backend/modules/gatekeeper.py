@@ -13,6 +13,42 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger("MAX.GATEKEEPER")
 
 
+_URL_PATTERN = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
+_DOMAIN_PATTERN = re.compile(
+    r"\b[a-zA-Z0-9-]+\.(?:com|net|org|io|ai|app|dev|co|in|edu|gov)(?:/\S*)?\b",
+    re.IGNORECASE,
+)
+_LOCALHOST_PATTERN = re.compile(r"\blocalhost(?::\d+)?\b", re.IGNORECASE)
+
+
+def clean_response_text(text: str) -> str:
+    cleaned_text = re.sub(r"\[(?!ACTION:)[^\]]+\]", "", text)
+    cleaned_text = re.sub(r" {2,}", " ", cleaned_text).strip()
+    return cleaned_text
+
+
+def _url_to_label(url: str) -> str:
+    raw = (url or "").strip()
+    if not raw:
+        return "Website"
+    raw = raw.replace("https://", "").replace("http://", "")
+    raw = raw.replace("www.", "")
+    raw = raw.split("/")[0]
+    raw = raw.split("?")[0].split("#")[0].split(":")[0]
+    name = raw.split(".")[0] if raw else "Website"
+    return name.capitalize() if name else "Website"
+
+
+def _strip_urls_for_tts(text: str) -> str:
+    def _replace(match: re.Match) -> str:
+        return _url_to_label(match.group(0))
+
+    text = _LOCALHOST_PATTERN.sub("Localhost", text)
+    text = _URL_PATTERN.sub(_replace, text)
+    text = _DOMAIN_PATTERN.sub(_replace, text)
+    return text
+
+
 class _Rule:
     __slots__ = ("regex", "replacement")
 
@@ -105,8 +141,10 @@ class ResponseGatekeeper:
             return text
 
         result = text
-        for rule in [*self._banned_rules, *self._gender_rules, *self._artifact_rules]:
+        for rule in [*self._banned_rules, *self._gender_rules]:
             result = rule.apply(result)
+
+        result = clean_response_text(result)
         for rule in self._cleanup_rules:
             result = rule.apply(result)
 
@@ -121,6 +159,7 @@ class ResponseGatekeeper:
     def filter_for_tts(self, text: str, max_chars: int = 300) -> str:
         """Aggressive filter for TTS — strips emojis, markdown, trims to sentence boundary."""
         result = self.filter(text)
+        result = _strip_urls_for_tts(result)
         for rule in self._tts_rules:
             result = rule.apply(result)
         result = re.sub(r" {2,}", " ", result).strip()

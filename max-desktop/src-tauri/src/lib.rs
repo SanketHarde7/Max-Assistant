@@ -2,6 +2,7 @@
 
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -15,16 +16,20 @@ use tauri_plugin_global_shortcut::{
 use std::os::windows::process::CommandExt;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+const TRAY_DBLCLICK_MS: u64 = 350;
 
 struct AppState {
     backend_process: Mutex<Option<std::process::Child>>,
+    last_tray_click: Mutex<Option<Instant>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // Builder ko 'app' variable mein save kiya hai taaki end mein guard laga sakein
+    let app = tauri::Builder::default()
         .manage(AppState {
             backend_process: Mutex::new(None),
+            last_tray_click: Mutex::new(None),
         })
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
@@ -53,7 +58,6 @@ pub fn run() {
 
             tray_menu.append_items(&[&open_item, &settings_item, &separator, &exit_item])?;
 
-            // 🟢 FAIL-SAFE ICON LOADING: Ab app kabhi crash nahi hoga!
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false);
@@ -94,31 +98,54 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            if !is_visible {
+                        let state: tauri::State<AppState> = app.state();
+                        let now = Instant::now();
+
+                        let mut last_click = state.last_tray_click.lock().unwrap();
+                        let is_double = last_click
+                            .map(|prev| now.duration_since(prev) <= Duration::from_millis(TRAY_DBLCLICK_MS))
+                            .unwrap_or(false);
+
+                        if is_double {
+                            *last_click = None;
+                            if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
                                 let _ = window.unminimize();
                                 let _ = window.set_focus();
                             }
+                            ensure_backend_running(app.clone());
+                        } else {
+                            *last_click = Some(now);
                         }
-                        ensure_backend_running(app.clone());
                     }
                 })
                 .build(app_handle)?;
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![exit_app, start_listening_animation, stop_listening_animation])
+        .invoke_handler(tauri::generate_handler![
+            exit_app, 
+            start_listening_animation, 
+            stop_listening_animation, 
+            hibernate_backend
+        ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // Prevent app from dying, just hide the window
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // 🔴 THE MASTER GUARD: Tauri ko khud-khushi (auto-exit) karne se roko
+    app.run(|_app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            // Jab tak "Exit Completely" click na ho, app background mein chalta rahega
+            api.prevent_exit();
+        }
+        _ => {}
+    });
 }
 
 fn ensure_backend_running(app_handle: tauri::AppHandle) {
@@ -159,7 +186,14 @@ fn start_backend(app_handle: tauri::AppHandle) {
         }
 
         #[cfg(target_os = "windows")]
-        let python_cmd = project_root.join("backend").join(".venv").join("Scripts").join("python.exe");
+        let python_cmd = {
+            let pythonw = project_root.join("backend").join(".venv").join("Scripts").join("pythonw.exe");
+            if pythonw.exists() {
+                pythonw
+            } else {
+                project_root.join("backend").join(".venv").join("Scripts").join("python.exe")
+            }
+        };
 
         #[cfg(not(target_os = "windows"))]
         let python_cmd = project_root.join("backend").join(".venv").join("bin").join("python3");
@@ -184,6 +218,22 @@ fn start_backend(app_handle: tauri::AppHandle) {
             *state.backend_process.lock().unwrap() = Some(child);
         }
     });
+}
+
+#[tauri::command]
+fn hibernate_backend(app_handle: tauri::AppHandle) {
+    let state: tauri::State<AppState> = app_handle.state();
+    if let Some(mut child) = state.backend_process.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+    
+    use tauri::Manager;
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    if let Some(window) = app_handle.get_webview_window("overlay") {
+        let _ = window.hide();
+    }
 }
 
 #[tauri::command]

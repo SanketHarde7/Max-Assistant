@@ -11,6 +11,18 @@ from config import config
 logger = logging.getLogger("MAX.BROWSER")
 
 
+def _url_to_label(url: str) -> str:
+    raw = (url or "").strip()
+    if not raw:
+        return "Website"
+    raw = raw.replace("https://", "").replace("http://", "")
+    raw = raw.replace("www.", "")
+    raw = raw.split("/")[0]
+    raw = raw.split("?")[0].split("#")[0].split(":")[0]
+    name = raw.split(".")[0] if raw else "Website"
+    return name.capitalize() if name else "Website"
+
+
 class BrowserAgent:
     """Lightweight Selenium browser agent."""
 
@@ -55,6 +67,7 @@ class BrowserAgent:
         if status != "ok":
             return status
         url = url.strip()
+        label = _url_to_label(url)
         # Agar dot (.) nahi hai, toh automatically .com add kar do
         if "." not in url and not url.startswith(("http://", "https://")):
             url = f"{url}.com"
@@ -63,7 +76,7 @@ class BrowserAgent:
             url = "https://" + url
         try:
             self._driver.get(url)
-            return f"Browser mein khola boss: {url}"
+            return f"{label} opened in browser."
         except Exception as e:
             return f"URL load nahi ho paya: {str(e)[:120]}"
 
