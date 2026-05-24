@@ -118,7 +118,7 @@ const App: React.FC = () => {
     }
   }, [stopSpeaking]);
 
-  const playAudio = useCallback((rawBase64: string, hibernateAfter: boolean = false) => {
+  const playAudio = useCallback((rawBase64: string, hibernateAfter: boolean = false, isHealthAlert: boolean = false) => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -126,6 +126,13 @@ const App: React.FC = () => {
     setOrbState("speaking");
     const audio = new Audio(`data:audio/mp3;base64,${rawBase64}`);
     audioRef.current = audio;
+
+    // 🔴 THE CORE TWEAK: Reduce volume if it's a silent health check reminder
+    if (isHealthAlert) {
+      audio.volume = 0.35; // Play at a soft, ambient 35% capacity
+    } else {
+      audio.volume = 1.0;  // Full volume for conversational replies
+    }
     
     // Yahan magic hoga: Audio puri hote hi Rust Boss ko signal jayega
     audio.onended = async () => {
@@ -185,7 +192,14 @@ const App: React.FC = () => {
             clearTimeout(hibernateTimerRef.current);
             hibernateTimerRef.current = null;
           }
-          playAudio(msg.audio, shouldHibernateRef.current);
+
+          // 🔴 NAYA UPDATE: Backend se aane wale metadata ko check karo
+          // (Agar TS error de, toh 'msg' ko (msg as any) likh dena temporary fix ke liye)
+          const isHealth = (msg as any).metadata?.type === "health_alert";
+
+          // 🔴 playAudio mein 'isHealth' ko 3rd argument pass kar diya
+          playAudio(msg.audio, shouldHibernateRef.current, isHealth);
+          
           shouldHibernateRef.current = false; 
         } else {
           setOrbState("idle");
