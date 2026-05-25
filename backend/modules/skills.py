@@ -667,36 +667,62 @@ class SkillsEngine:
     # MULTI-TAB WEB OPENER (CLEAN TTS URLS)
     # ════════════════════════════════════════════
 
+    # ── MUTLI-TAB WEB OPENER (UPGRADED WITH 3-LAYER ACCURACY ENGINE) ──────────
+
+    # ── MULTI-TAB WEB OPENER (ASYNC EVENT LOOP FIX) ──────────────────────────
+
     def _skill_web_open(self, url: str = "", **kw) -> str:
         if not url:
             return "Provide a URL."
             
         urls_to_open = url.split(",")
         results = []
-        opened = []
         
+        import asyncio
+        import webbrowser
+        import time
+        from modules.web_autopilot import WebAutopilotEngine
+        autopilot = WebAutopilotEngine(self.config)
+
         for u in urls_to_open:
             u = u.strip()
             if not u: continue
             
-            clean_name = _url_to_label(u)
-            
-            if not u.startswith(("http://", "https://")):
-                u = "https://" + u
             try:
-                import time
-                webbrowser.open_new_tab(u)
-                time.sleep(0.5) 
-                opened.append(clean_name)
+                # 🔴 FIX: Pehle check karo ki kya koi event loop chal raha hai
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    # Agar loop chal raha hai (jo ki hamare case mein chal raha hai), 
+                    # toh hum coroutine ko task ki tarah run hone ke liye submit karenge aur wait karenge
+                    import threading
+                    
+                    # Safe prediction checker for running event loops
+                    future = asyncio.run_coroutine_threadsafe(autopilot.resolve_accurate_url(u), loop)
+                    verified_url = future.result(timeout=6.0) # 6 seconds timeout limit
+                else:
+                    # Fallback agar loop nahi chal raha ho toh normal run karo
+                    verified_url = asyncio.run(autopilot.resolve_accurate_url(u))
+                
+                # Sahi URL milne ke baad name cleaner logic
+                clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
+                clean_name = clean_name.split("/")[0].split(".")[0].capitalize()
+                
+                webbrowser.open_new_tab(verified_url)
+                time.sleep(0.4) 
+                results.append(f"{clean_name} opened")
+                
             except Exception as e:
-                results.append(f"Failed to open {clean_name}")
-
-        if opened:
-            results.insert(0, f"{_join_names(opened)} opened")
-
-        if not results:
-            return "Provide a URL."
-
+                logger.error(f"Failed to open verified route for {u}: {e}")
+                # Fallback backup: Agar 3-Layer pure fail ho jaye loop crash ke wajah se, 
+                # toh normal blind open kar do taaki browser khulna band na ho!
+                fallback_url = u if u.startswith(("http://", "https://")) else f"https://{u}"
+                webbrowser.open_new_tab(fallback_url)
+                results.append(f"{u} opened via fallback")
+                
         return ", ".join(results) + "."
 
     def _skill_volume_control(self, action: str = "up", value: str = "10", **kw) -> str:
