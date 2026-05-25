@@ -1,5 +1,5 @@
 /**
- * App.tsx — MAX v4.4
+ * App.tsx — MAX v4.9 (Merged Health & Autopilot Follow-ups)
  * Orb UI: centered, draggable, full voice pipeline.
  *
  * CLICK BEHAVIOR:
@@ -13,7 +13,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { listen }           from "@tauri-apps/api/event";
-import { invoke }           from "@tauri-apps/api/core"; // 👈 Rust API import
+import { invoke }           from "@tauri-apps/api/core"; // Rust API import
 import { openUrl }          from "@tauri-apps/plugin-opener";
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
@@ -36,6 +36,10 @@ const App: React.FC = () => {
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
 
+  // 🧠 WEB AUTOPILOT REGISTRATION STATE REFS
+  const lastResearchFileRef = useRef<string | null>(null);
+  const botBypassUrlRef = useRef<string | null>(null);
+
   const dragTimerRef     = useRef<number | null>(null);
   const dragStartedRef   = useRef(false);
   const saveTimerRef     = useRef<number | null>(null);
@@ -48,7 +52,6 @@ const App: React.FC = () => {
 
   const hibernateTimerRef = useRef<number | null>(null);
   const hibernateInFlightRef = useRef(false);
-
   const shouldHibernateRef = useRef(false);
 
   useEffect(() => {
@@ -127,14 +130,13 @@ const App: React.FC = () => {
     const audio = new Audio(`data:audio/mp3;base64,${rawBase64}`);
     audioRef.current = audio;
 
-    // 🔴 THE CORE TWEAK: Reduce volume if it's a silent health check reminder
+    // 🔴 REDUCE VOLUME FOR HEALTH CHECK PAYLOADS
     if (isHealthAlert) {
-      audio.volume = 0.35; // Play at a soft, ambient 35% capacity
+      audio.volume = 0.35; // Soft ambient capacity
     } else {
-      audio.volume = 1.0;  // Full volume for conversational replies
+      audio.volume = 1.0;  // Full volume conversation replies
     }
     
-    // Yahan magic hoga: Audio puri hote hi Rust Boss ko signal jayega
     audio.onended = async () => {
       audioRef.current = null;
       setOrbState("idle");
@@ -167,6 +169,14 @@ const App: React.FC = () => {
         if (msg.text) showToast(msg.text);
         break;
       case "transcript":
+        // Call our dynamic follow-up interpreter loop before processing normal commands
+        if (msg.text) {
+          const intercepted = handleVoiceCommandInterpretation(msg.text);
+          if (intercepted) {
+             // Stop further backend pipeline processing since hook has captured the action
+             break;
+          }
+        }
         break;
       case "response_text":
         if (msg.text) {
@@ -193,17 +203,22 @@ const App: React.FC = () => {
             hibernateTimerRef.current = null;
           }
 
-          // 🔴 NAYA UPDATE: Backend se aane wale metadata ko check karo
-          // (Agar TS error de, toh 'msg' ko (msg as any) likh dena temporary fix ke liye)
+          // HEALTH ALERT CHECK (Volume adjustment flag validation)
           const isHealth = (msg as any).metadata?.type === "health_alert";
 
-          // 🔴 playAudio mein 'isHealth' ko 3rd argument pass kar diya
-          playAudio(msg.audio, shouldHibernateRef.current, isHealth);
+          // WEB AUTOPILOT ENGINE CACHE STATE STORAGE HOOKS
+          if ((msg as any).metadata?.status === "file_saved") {
+            lastResearchFileRef.current = (msg as any).metadata.file_path;
+          }
           
+          if ((msg as any).metadata?.status === "bot_detected") {
+            botBypassUrlRef.current = (msg as any).metadata.url;
+          }
+
+          playAudio(msg.audio, shouldHibernateRef.current, isHealth);
           shouldHibernateRef.current = false; 
         } else {
           setOrbState("idle");
-          // Agar audio hi nahi aayi, toh seedha Rust ko bulao
           if (shouldHibernateRef.current) {
             void triggerHibernate("no-audio");
             shouldHibernateRef.current = false;
@@ -229,6 +244,38 @@ const App: React.FC = () => {
   }, []);
 
   const { send } = useBackend({ onMessage: handleBackendMessage, onStatusChange: handleStatusChange });
+
+  // Smart interception loop for conversational follow-ups (Yes/No handling)
+  const handleVoiceCommandInterpretation = (userText: string): boolean => {
+    // Standard JS trim handles whitespace cleanup safely without custom .strip extensions
+    const text = userText.toLowerCase().trim();
+    
+    // Check if we have a saved research file path and user wants to open it
+    if ((text.includes("yes") || text.includes("open") || text.includes("kholo") || text.includes("haan")) && lastResearchFileRef.current) {
+        send({
+            type: "execute_skill",
+            skill: "open_app", 
+            params: [lastResearchFileRef.current]
+        } as any);
+        lastResearchFileRef.current = null; // Token clear
+        setOrbState("idle");
+        return true; 
+    }
+    
+    // Check if bot was detected and user wants to open it manually on screen
+    if ((text.includes("yes") || text.includes("open") || text.includes("kholo") || text.includes("haan")) && botBypassUrlRef.current) {
+        send({
+            type: "execute_skill",
+            skill: "web_open", 
+            params: [botBypassUrlRef.current]
+        } as any);
+        botBypassUrlRef.current = null; // Token clear
+        setOrbState("idle");
+        return true; 
+    }
+
+    return false; 
+  };
 
   const handleAudioReady = useCallback((base64: string) => {
     setOrbState("processing");
@@ -381,7 +428,6 @@ const App: React.FC = () => {
 
   return (
     <div className="orb-stage" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      
       <div
         className={`circle-icon ${orbState}`}
         onPointerDown={handlePointerDown}
