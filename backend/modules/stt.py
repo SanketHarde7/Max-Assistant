@@ -66,21 +66,17 @@ async def transcribe_audio(
     language: str = ""  # Empty = auto-detect (best for mixed Hindi-English)
 ) -> str:
     """
-    Transcribe audio bytes via Groq Whisper.
-    
-    Args:
-        audio_data: Raw bytes or base64-encoded audio
-        model: Whisper model to use
-        language: Language code (e.g., "hi", "en", ""). 
-                  Empty string enables auto-detection (best for Hinglish).
+    Transcribe audio bytes via Groq Whisper with retry on failure.
+    Returns empty string on error (never returns fake transcript).
     """
-    client = AsyncGroq(api_key=config.GROQ_API_KEY)
     tmp_path = None
+    wav_path = None
 
     try:
         audio_bytes = _decode_audio_input(audio_data)
-        if not audio_bytes:
-            raise ValueError("Empty audio payload")
+        if not audio_bytes or len(audio_bytes) < 1000:
+            logger.warning(f"Audio payload too small ({len(audio_bytes) if audio_bytes else 0} bytes), skipping STT")
+            return ""
 
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
             f.write(audio_bytes)
@@ -88,6 +84,8 @@ async def transcribe_audio(
 
         # Try converting to wav for better compatibility
         file_to_transcribe = _convert_webm_to_wav(tmp_path)
+        if file_to_transcribe != tmp_path:
+            wav_path = file_to_transcribe
 
         with open(file_to_transcribe, "rb") as f:
             audio_bytes = f.read()
@@ -97,31 +95,43 @@ async def transcribe_audio(
             "model": model,
             "response_format": "text",
         }
-        
+
         # Only pass language if explicitly specified
         if language:
             kwargs["language"] = language
 
-        resp = await client.audio.transcriptions.create(**kwargs)
-        
-        # Cleanup temp files
-        if file_to_transcribe != tmp_path and os.path.exists(file_to_transcribe):
+        # Retry once on failure
+        max_retries = 2
+        last_error = None
+        for attempt in range(max_retries):
             try:
-                os.unlink(file_to_transcribe)
+                client = AsyncGroq(api_key=config.GROQ_API_KEY)
+                resp = await client.audio.transcriptions.create(**kwargs)
+                result = resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
+                if result:
+                    return result
+                return ""
             except Exception as e:
-                logger.debug(f"Temp cleanup failed (wav): {e}")
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"STT attempt {attempt + 1} failed: {e}, retrying...")
+                    await asyncio.sleep(0.5)
+                else:
+                    logger.error(f"STT failed after {max_retries} attempts: {e}")
 
-        return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
+        return ""
 
     except Exception as e:
         logger.error(f"STT failed: {e}")
-        return f"Sun nahi paya, dobara bol."
+        return ""
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception as e:
-                logger.debug(f"Temp cleanup failed (webm): {e}")
+        # Clean up ALL temp files
+        for path in [tmp_path, wav_path]:
+            if path and os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except Exception as e:
+                    logger.debug(f"Temp cleanup failed: {e}")
 
 
 async def transcribe_file(
@@ -147,7 +157,7 @@ async def transcribe_file(
         return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
     except Exception as e:
         logger.error(f"STT file failed: {e}")
-        return "File transcribe nahi ho payi."
+        return ""
 
 
 async def transcribe_wake_word(

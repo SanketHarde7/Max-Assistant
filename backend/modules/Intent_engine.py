@@ -83,6 +83,10 @@ COMMAND — User wants an action performed RIGHT NOW.
   ✓ "set a 5 minute timer"
   ✓ "search for latest news"
   ✓ "YouTube pe Believer play karo"
+  ✓ "research about quantum computing"
+  ✓ "deep research karo AI pe"
+  ✓ "find data about climate change"
+  ✓ "investigate blockchain technology"
 
 CAPABILITY_QUESTION — User asks if the assistant CAN or IS ABLE TO do something. No action should be taken.
   ✓ "can you play YouTube videos?"
