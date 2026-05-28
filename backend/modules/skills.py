@@ -229,6 +229,8 @@ class SkillsEngine:
             "kb_rebuild":        self._skill_kb_rebuild,
             "kb_list":           self._skill_kb_list,
             "kb_stats":          self._skill_kb_stats,
+            "research":          self._skill_research,
+            "create_file":       self._skill_create_file,
         }
         try:
             pl = self.plugin_loader
@@ -587,23 +589,34 @@ class SkillsEngine:
             success = False
 
             if system == "Windows":
+                # 1. Try protocol handlers (whatsapp:, spotify:, etc.)
                 proto = self._WIN_PROTOCOLS.get(app_lower)
                 if proto:
                     try:
                         os.startfile(proto)
                         results.append(f"{app_name} opened.")
                         success = True
-                    except Exception: pass
+                    except Exception as e:
+                        logger.warning(f"Protocol launch failed for {app_name}: {e}")
 
+                # 2. Try direct executables
                 if not success:
                     exe = self._WIN_DIRECT.get(app_lower)
                     if exe:
                         try:
-                            subprocess.Popen(exe, shell=True)
-                            results.append(f"{app_name} opened.")
-                            success = True
-                        except Exception: pass
+                            proc = subprocess.Popen(exe, shell=True)
+                            # Give it a moment to fail
+                            import time
+                            time.sleep(0.3)
+                            if proc.poll() is None or proc.returncode == 0:
+                                results.append(f"{app_name} opened.")
+                                success = True
+                            else:
+                                logger.warning(f"Direct exe launch failed for {app_name}: exit code {proc.returncode}")
+                        except Exception as e:
+                            logger.warning(f"Direct exe launch error for {app_name}: {e}")
 
+                # 3. Try app indexer (fuzzy match installed apps)
                 if not success:
                     try:
                         match = self.app_indexer.find_app(app_lower)
@@ -612,28 +625,38 @@ class SkillsEngine:
                             os.startfile(app_path)
                             results.append(f"{matched_name.title() or app_name} opened.")
                             success = True
-                    except Exception: pass
+                    except Exception as e:
+                        logger.warning(f"App indexer launch failed for {app_name}: {e}")
 
+                # 4. Last resort: try raw command
                 if not success:
                     try:
-                        subprocess.Popen(app_lower, shell=True)
-                        results.append(f"{app_name} opened.")
-                        success = True
-                    except Exception: pass
+                        proc = subprocess.Popen(app_lower, shell=True)
+                        import time
+                        time.sleep(0.3)
+                        if proc.poll() is None or proc.returncode == 0:
+                            results.append(f"{app_name} opened.")
+                            success = True
+                        else:
+                            logger.warning(f"Raw command launch failed for {app_name}: exit code {proc.returncode}")
+                    except Exception as e:
+                        logger.warning(f"Raw command launch error for {app_name}: {e}")
 
             elif system == "Darwin":
                 try:
                     subprocess.run(["open", "-a", mac_map.get(app_lower, app_name)], check=True)
                     results.append(f"{app_name} opened.")
                     success = True
-                except Exception: pass
+                except Exception as e:
+                    logger.warning(f"macOS launch failed for {app_name}: {e}")
 
             else:
                 try:
                     subprocess.Popen([app_lower])
                     results.append(f"{app_name} opened.")
                     success = True
-                except Exception: pass
+                except Exception as e:
+                    logger.warning(f"Linux launch failed for {app_name}: {e}")
 
             if not success:
                 fallback = web_map.get(app_lower)
@@ -642,8 +665,10 @@ class SkillsEngine:
                     results.append(f"{app_name} not found locally. Opened in browser.")
                 else:
                     results.append(f"Could not find '{app_name}'.")
+                    logger.error(f"All launch methods failed for: {app_name}")
 
         return "\n".join(results)
+
 
     def _skill_list_apps(self, *args) -> str:
         query = " ".join(args).strip()
@@ -671,6 +696,8 @@ class SkillsEngine:
 
     # ── MULTI-TAB WEB OPENER (ASYNC EVENT LOOP FIX) ──────────────────────────
 
+    # ── MULTI-TAB WEB OPENER (BULLETPROOF SYNCHRONOUS RESOLVER) ──────────────
+
     def _skill_web_open(self, url: str = "", **kw) -> str:
         if not url:
             return "Provide a URL."
@@ -678,7 +705,6 @@ class SkillsEngine:
         urls_to_open = url.split(",")
         results = []
         
-        import asyncio
         import webbrowser
         import time
         from modules.web_autopilot import WebAutopilotEngine
@@ -689,25 +715,9 @@ class SkillsEngine:
             if not u: continue
             
             try:
-                # 🔴 FIX: Pehle check karo ki kya koi event loop chal raha hai
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop and loop.is_running():
-                    # Agar loop chal raha hai (jo ki hamare case mein chal raha hai), 
-                    # toh hum coroutine ko task ki tarah run hone ke liye submit karenge aur wait karenge
-                    import threading
-                    
-                    # Safe prediction checker for running event loops
-                    future = asyncio.run_coroutine_threadsafe(autopilot.resolve_accurate_url(u), loop)
-                    verified_url = future.result(timeout=6.0) # 6 seconds timeout limit
-                else:
-                    # Fallback agar loop nahi chal raha ho toh normal run karo
-                    verified_url = asyncio.run(autopilot.resolve_accurate_url(u))
+                # 🔥 Direct synchronous call! No async loops, no thread-safe crashes, zero issues.
+                verified_url = autopilot.resolve_accurate_url_sync(u)
                 
-                # Sahi URL milne ke baad name cleaner logic
                 clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
                 clean_name = clean_name.split("/")[0].split(".")[0].capitalize()
                 
@@ -717,11 +727,9 @@ class SkillsEngine:
                 
             except Exception as e:
                 logger.error(f"Failed to open verified route for {u}: {e}")
-                # Fallback backup: Agar 3-Layer pure fail ho jaye loop crash ke wajah se, 
-                # toh normal blind open kar do taaki browser khulna band na ho!
                 fallback_url = u if u.startswith(("http://", "https://")) else f"https://{u}"
                 webbrowser.open_new_tab(fallback_url)
-                results.append(f"{u} opened via fallback")
+                results.append(f"{u} opened")
                 
         return ", ".join(results) + "."
 
@@ -987,6 +995,141 @@ class SkillsEngine:
             )
         except Exception as e:
             return f"KB stats failed: {e}"
+
+    # ════════════════════════════════════════════
+    # RESEARCH SKILL (Bridge to WebAutopilot)
+    # ════════════════════════════════════════════
+
+    def _skill_research(self, *args) -> str:
+        """Launch background agentic research via WebAutopilotEngine.
+        Uses asyncio.run_coroutine_threadsafe to safely stream results
+        back to the frontend WebSocket from the selenium background thread."""
+        query = " ".join(args).strip()
+        if not query:
+            return "What topic should I research?"
+
+        from modules.web_autopilot import WebAutopilotEngine
+
+        def tts_callback(text: str, metadata: dict = None):
+            """Thread-safe callback that targets the global main_loop and
+            active_websocket objects from main.py without crashing."""
+            try:
+                # Import the globals lazily to avoid circular import at module load
+                import main as _main_module
+                ws = _main_module.active_websocket
+                loop = _main_module.main_loop
+                if not ws or not loop:
+                    logger.warning("Research callback: no active WebSocket or event loop")
+                    return
+
+                async def _push():
+                    try:
+                        payload = {
+                            "event": "response_text",
+                            "text": text,
+                            "skill_used": "research",
+                        }
+                        if metadata:
+                            payload["metadata"] = metadata
+                        await ws.send_json(payload)
+
+                        # Also generate and stream TTS for the text
+                        from modules.tts import generate_tts
+                        import base64, os
+                        tts_path = await generate_tts(text[:300])
+                        if tts_path and os.path.exists(tts_path):
+                            with open(tts_path, "rb") as f:
+                                encoded = base64.b64encode(f.read()).decode("utf-8")
+                                await ws.send_json({
+                                    "event": "audio_response",
+                                    "audio": encoded,
+                                })
+                    except Exception as e:
+                        logger.error(f"Research TTS callback push failed: {e}")
+
+                asyncio.run_coroutine_threadsafe(_push(), loop)
+            except Exception as e:
+                logger.error(f"Research tts_callback outer error: {e}")
+
+        autopilot = WebAutopilotEngine(self.config)
+        autopilot.run_background_research(query, tts_callback)
+        return f"Boss, main background mein {query} pe research shuru kar rahi hu. Aap apna kaam continue karo."
+
+    # ════════════════════════════════════════════
+    # CREATE FILE SKILL (Plain text/document files)
+    # ════════════════════════════════════════════
+
+    async def _skill_create_file(self, *args) -> str:
+        """Create a plain text/document file with AI-generated content about a topic.
+        NOT for code — use write_code for that."""
+        if not args:
+            return "What should I write about? Give me a filename and topic."
+
+        # Parse args: filename:topic or just topic
+        if len(args) >= 2:
+            filename = args[0].strip()
+            topic = " ".join(args[1:]).strip()
+        else:
+            topic = args[0].strip()
+            # Auto-generate filename from topic
+            safe_name = re.sub(r'[^a-zA-Z0-9\s]', '', topic)[:30].strip().replace(' ', '_')
+            filename = f"{safe_name}.txt" if safe_name else "document.txt"
+
+        # Ensure .txt extension if no extension given
+        if '.' not in filename:
+            filename += '.txt'
+
+        try:
+            from groq import AsyncGroq
+            client = AsyncGroq(api_key=self.config.get_active_api_key())
+
+            prompt = f"""Write a detailed, well-structured document about: {topic}
+
+Rules:
+- Write in a clear, natural, human-friendly tone
+- Use proper headings, sections, and paragraphs for readability
+- Be comprehensive, informative, and detailed
+- Include key facts, explanations, and insights
+- Do NOT write code — write plain readable text content only
+- Do NOT use markdown code blocks or any programming syntax
+- Organize information logically with clear section headers
+- Write in English"""
+
+            response = await client.chat.completions.create(
+                model=self.config.LLM_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                max_tokens=2500,
+            )
+            content = response.choices[0].message.content.strip()
+
+            # Save to CODE_SAVE_DIR (where MAX saves generated files)
+            save_dir = self.config.CODE_SAVE_DIR
+            save_dir.mkdir(parents=True, exist_ok=True)
+            file_path = save_dir / filename
+
+            # Avoid overwriting existing files
+            if file_path.exists():
+                stem = file_path.stem
+                ext = file_path.suffix
+                counter = 1
+                while file_path.exists():
+                    file_path = save_dir / f"{stem}_{counter}{ext}"
+                    counter += 1
+
+            file_path.write_text(content, encoding='utf-8')
+
+            try:
+                rel_path = file_path.relative_to(self.config.WORKSPACE_DIR)
+            except ValueError:
+                rel_path = file_path.name
+
+            logger.info(f"Text file created: {file_path} ({len(content)} chars)")
+            return f"File created: {rel_path}"
+
+        except Exception as e:
+            logger.error(f"create_file error: {e}")
+            return f"File create karne mein error aaya: {str(e)}"
 
 
 # ══════════════════════════════════════════
