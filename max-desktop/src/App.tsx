@@ -39,6 +39,7 @@ const App: React.FC = () => {
   // 🧠 WEB AUTOPILOT REGISTRATION STATE REFS
   const lastResearchFileRef = useRef<string | null>(null);
   const botBypassUrlRef = useRef<string | null>(null);
+  const ignoreResponseRef = useRef<boolean>(false);
 
   const dragTimerRef     = useRef<number | null>(null);
   const dragStartedRef   = useRef(false);
@@ -179,6 +180,9 @@ const App: React.FC = () => {
         }
         break;
       case "response_text":
+        if (ignoreResponseRef.current) {
+          break;
+        }
         if (msg.text) {
           if (msg.text.includes("[ACTION:HIBERNATE]")) {
             console.log("HIBERNATE TAG RECEIVED!");
@@ -197,6 +201,11 @@ const App: React.FC = () => {
         }
         break;
       case "audio_response":
+        if (ignoreResponseRef.current) {
+          ignoreResponseRef.current = false; // Reset
+          setOrbState("idle");
+          break;
+        }
         if (msg.audio) {
           if (hibernateTimerRef.current) {
             clearTimeout(hibernateTimerRef.current);
@@ -258,6 +267,7 @@ const App: React.FC = () => {
             params: [lastResearchFileRef.current]
         } as any);
         lastResearchFileRef.current = null; // Token clear
+        ignoreResponseRef.current = true;
         setOrbState("idle");
         return true; 
     }
@@ -270,6 +280,7 @@ const App: React.FC = () => {
             params: [botBypassUrlRef.current]
         } as any);
         botBypassUrlRef.current = null; // Token clear
+        ignoreResponseRef.current = true;
         setOrbState("idle");
         return true; 
     }
@@ -443,6 +454,9 @@ const App: React.FC = () => {
 
       {toastText && (
         <div className="toast">{toastText}</div>
+      )}
+      {errorMsg && (
+        <div className="toast error-toast">{errorMsg}</div>
       )}
     </div>
   );
