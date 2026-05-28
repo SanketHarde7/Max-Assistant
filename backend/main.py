@@ -36,6 +36,23 @@ from modules.plugin_loader import get_plugin_loader
 from modules.knowledge_indexer import get_knowledge_indexer
 from modules.knowledge_base import get_knowledge_base
 import threading as _threading
+import asyncio
+from modules.health_buddy import HealthBuddy
+
+# ── Global WebSocket & Health Buddy References ──
+active_websocket: Optional[WebSocket] = None
+main_loop: Optional[asyncio.AbstractEventLoop] = None
+health_buddy_instance: Optional[HealthBuddy] = None
+
+def send_health_buddy_alert(payload):
+    global active_websocket, main_loop
+    if active_websocket and main_loop:
+        async def _send():
+            try:
+                await active_websocket.send_json(payload)
+            except Exception as e:
+                logger.warning(f"Failed to stream health alert: {e}")
+        asyncio.run_coroutine_threadsafe(_send(), main_loop)
 
 # ═══════════════════════════════════════════════════
 # LOGGING
@@ -91,6 +108,23 @@ async def _on_startup():
             logger.warning(f"KB auto-index: {e}")
 
     _threading.Thread(target=_build_kb, daemon=True, name="MAX-KB-Init").start()
+
+    # 3. Health Buddy daemon
+    try:
+        global health_buddy_instance
+        health_buddy_instance = HealthBuddy(send_health_buddy_alert)
+        health_buddy_instance.start()
+        logger.info("Health Buddy started")
+    except Exception as e:
+        logger.warning(f"Health Buddy start failed: {e}")
+
+
+@app.on_event("shutdown")
+async def _on_shutdown():
+    global health_buddy_instance
+    if health_buddy_instance:
+        health_buddy_instance.stop()
+        logger.info("Health Buddy stopped")
 
 
 @app.on_event("startup")
@@ -246,6 +280,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info(f"Client connected: {websocket.client}")
 
+    global active_websocket, main_loop
+    active_websocket = websocket
+    main_loop = asyncio.get_running_loop()
+
     agent = get_agent()
     skills = get_skills_engine(config)
 
@@ -292,6 +330,50 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     logger.info(f"User Text: {user_text}")
 
+                    # ── Research file follow-up interception (matches voice handler) ──
+                    lower_text = user_text.lower().strip()
+                    text_follow_up_words = ["haan", "open", "kholo", "yes", "khol", "open it", "haan kholo"]
+                    is_text_follow_up = any(word in lower_text for word in text_follow_up_words)
+
+                    text_intercepted = False
+                    if is_text_follow_up:
+                        import glob
+                        import time as _time
+                        from modules.web_autopilot import CACHE_DIR
+
+                        # Check both research cache AND code save dir for recently created files
+                        files = glob.glob(str(CACHE_DIR / "*.*"))
+                        try:
+                            code_save_dir = config.CODE_SAVE_DIR
+                            if code_save_dir.exists():
+                                files.extend(glob.glob(str(code_save_dir / "*.*")))
+                        except Exception:
+                            pass
+                        latest_file = max(files, key=os.path.getmtime) if files else None
+
+                        if latest_file and (_time.time() - os.path.getmtime(latest_file) < 300):
+                            logger.info(f"Text follow-up intercepted: Opening latest file: {latest_file}")
+                            skills._skill_open_app(latest_file)
+                            await websocket.send_json({
+                                "event": "response_text",
+                                "text": f"Opening file: {os.path.basename(latest_file)}"
+                            })
+                            text_intercepted = True
+                        else:
+                            from modules.web_autopilot import LAST_BOT_BYPASS_URL, clear_last_bot_bypass_url
+                            if LAST_BOT_BYPASS_URL:
+                                logger.info(f"Text follow-up intercepted: Opening bot bypass URL: {LAST_BOT_BYPASS_URL}")
+                                skills._skill_web_open(LAST_BOT_BYPASS_URL)
+                                await websocket.send_json({
+                                    "event": "response_text",
+                                    "text": "Opening blocked website on screen..."
+                                })
+                                clear_last_bot_bypass_url()
+                                text_intercepted = True
+
+                    if text_intercepted:
+                        continue
+
                     result = await agent.process_text_input(user_text, use_tts=True, input_source="text")
                     await websocket.send_json({
                         "event": "response_text",
@@ -318,13 +400,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     from modules.stt import transcribe_audio
                     transcript = await transcribe_audio(audio_data)
 
-                    # Filter out whisper hallucinations and empty transcripts
-                    lower_trans = transcript.lower().strip()
-                    hallucinations = ["thank you.", "thank you", "thanks for watching", "subtitles by amara.org", ""]
-                    if lower_trans in hallucinations:
-                        logger.info("STT returned empty or hallucination, skipping LLM")
+                    # Filter out empty, error, and whisper hallucination transcripts
+                    if not transcript or not transcript.strip():
+                        logger.info("STT returned empty transcript, skipping LLM")
                         await websocket.send_json({"event": "error", "message": "I didn't catch that. Please try again."})
                         continue
+
+                    lower_trans = transcript.lower().strip()
+                    hallucinations = ["thank you.", "thank you", "thanks for watching", "subtitles by amara.org"]
+                    if lower_trans in hallucinations:
+                        logger.info("STT returned hallucination, skipping LLM")
+                        await websocket.send_json({"event": "error", "message": "I didn't catch that. Please try again."})
+                        continue
+
 
                     logger.info(f"STT: {transcript}")
 
@@ -332,6 +420,52 @@ async def websocket_endpoint(websocket: WebSocket):
                         "event": "transcript",
                         "text": transcript
                     })
+
+                    # Intercept conversational follow-ups like "Haan", "Open", "Kholo", "Yes"
+                    follow_up_words = ["haan", "open", "kholo", "yes", "khol"]
+                    is_follow_up = any(word in lower_trans for word in follow_up_words)
+                    
+                    intercepted = False
+                    if is_follow_up:
+                        import glob
+                        import time
+                        from modules.web_autopilot import CACHE_DIR
+                        
+                        # Check both research cache AND code save dir for recently created files
+                        files = glob.glob(str(CACHE_DIR / "*.*"))
+                        try:
+                            code_save_dir = config.CODE_SAVE_DIR
+                            if code_save_dir.exists():
+                                files.extend(glob.glob(str(code_save_dir / "*.*")))
+                        except Exception:
+                            pass
+                        latest_file = max(files, key=os.path.getmtime) if files else None
+                        
+                        # Check if latest file exists and was created in the last 5 minutes (300s)
+                        if latest_file and (time.time() - os.path.getmtime(latest_file) < 300):
+                            logger.info(f"Intercepted follow-up: Opening latest file: {latest_file}")
+                            skills._skill_open_app(latest_file)
+                            await websocket.send_json({
+                                "event": "response_text",
+                                "text": f"Opening file: {os.path.basename(latest_file)}"
+                            })
+                            intercepted = True
+                        else:
+                            # Check for LAST_BOT_BYPASS_URL from web_autopilot
+                            from modules.web_autopilot import LAST_BOT_BYPASS_URL, clear_last_bot_bypass_url
+                            if LAST_BOT_BYPASS_URL:
+                                logger.info(f"Intercepted follow-up: Opening bot bypass URL: {LAST_BOT_BYPASS_URL}")
+                                skills._skill_web_open(LAST_BOT_BYPASS_URL)
+                                await websocket.send_json({
+                                    "event": "response_text",
+                                    "text": f"Opening blocked website on screen..."
+                                })
+                                clear_last_bot_bypass_url()
+                                intercepted = True
+                                
+                    if intercepted:
+                        # Halt downstream LLM execution to stop continuous voice listening bleeding
+                        continue
 
                     result = await agent.process_text_input(transcript, use_tts=True, input_source="voice")
                     await websocket.send_json({
@@ -409,6 +543,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     msg_resp = await agent.clear_memory()
                     await websocket.send_json({"type": "system", "text": msg_resp})
 
+                # 5.5 EXECUTE SKILL
+                elif msg_type == "execute_skill":
+                    skill_name = msg.get("skill")
+                    params = msg.get("params", [])
+                    if skill_name in skills.skills_registry:
+                        try:
+                            raw = skills.skills_registry[skill_name](*params)
+                            result = await raw if asyncio.iscoroutine(raw) else raw
+                            logger.info(f"WebSocket execute_skill {skill_name} result: {result}")
+                            await websocket.send_json({
+                                "event": "response_text",
+                                "text": f"Executed: {result}"
+                            })
+                        except Exception as e:
+                            logger.error(f"WebSocket execute_skill failed: {e}")
+                            await websocket.send_json({"event": "error", "message": f"Skill execution failed: {e}"})
+
                 # 6. ABORT / KILL SWITCH
                 elif msg_type == "abort":
                     logger.info("Client sent abort signal")
@@ -428,6 +579,9 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_json({"event": "error", "message": f"Backend Error: {str(e)}"})
         except Exception:
             pass
+    finally:
+        if active_websocket == websocket:
+            active_websocket = None
 
 
 # ═══════════════════════════════════════════════════
