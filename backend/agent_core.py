@@ -105,20 +105,34 @@ class MaxAgent:
             if skill_tag:
                 skill_result = await self.skills.parse_and_execute(skill_tag, combined_context)
                 if skill_result.get("executed"):
+                    skill_output = skill_result.get("result", "").strip()
+                    
+                    # Check if skill actually failed (contains error indicators)
+                    skill_failed = False
+                    fail_indicators = ["could not find", "failed", "error", "not found", "not installed", "needed:", "missing"]
+                    if skill_output:
+                        lower_output = skill_output.lower()
+                        skill_failed = any(ind in lower_output for ind in fail_indicators)
+                    
                     if skill_result.get("is_data_skill"):
                         summary = await get_response_with_skill_result(
-                            text, skill_result["result"], combined_context
+                            text, skill_output, combined_context
                         )
                         final_response = summary["response"]
                         await self.memory.update_personality(
                             len(final_response), skill_result.get("skill_name", "")
                         )
+                    elif skill_failed:
+                        # Skill ran but reported failure — use the ACTUAL skill error, not the LLM's hopeful text
+                        final_response = skill_output
+                        logger.warning(f"Skill reported failure: {skill_output[:100]}")
                     else:
-                        skill_text = skill_result.get("result", "").strip()
-                        final_response = skill_text or llm_response
+                        # Skill succeeded — use skill result text
+                        final_response = skill_output or llm_response
                 else:
                     error = skill_result.get("error", "Skill failed")
                     final_response = f"{llm_response} (Error: {error[:60]})"
+
             else:
                 final_response = llm_response
                 await self.memory.update_personality(len(final_response), "")
