@@ -103,7 +103,7 @@ class MaxAgent:
 
             # ── Skill execution ───────────────────────────
             if skill_tag:
-                skill_result = await self.skills.parse_and_execute(skill_tag, combined_context)
+                skill_result = await self.skills.parse_and_execute(skill_tag, combined_context, text)
                 if skill_result.get("executed"):
                     skill_output = skill_result.get("result", "").strip()
                     
@@ -139,6 +139,13 @@ class MaxAgent:
 
             # ── Gatekeeper ────────────────────────────────
             filtered = self.gatekeeper.filter(final_response)
+
+            # ── SkillForge soft gap trigger ───────────────
+            try:
+                from modules.skill_forge import get_skill_forge
+                get_skill_forge(self.config).record_gap(text, filtered)
+            except Exception as e:
+                logger.debug(f"Failed to record gap in SkillForge: {e}")
 
             await self.memory.add_message("assistant", filtered)
             await self.memory.save_memory()
