@@ -244,7 +244,7 @@ class SkillsEngine:
     # DISPATCHER (MULTI-SKILL SUPPORT)
     # ════════════════════════════════════════════
 
-    async def parse_and_execute(self, response_text: str, memory_context: str = "") -> Dict[str, Any]:
+    async def parse_and_execute(self, response_text: str, memory_context: str = "", user_request: str = "") -> Dict[str, Any]:
         matches = list(self.SKILL_PATTERN.finditer(response_text))
         
         if not matches:
@@ -268,6 +268,11 @@ class SkillsEngine:
 
             if skill_name not in self.skills_registry:
                 logger.warning(f"Unknown skill: {skill_name}")
+                try:
+                    from modules.skill_forge import get_skill_forge
+                    get_skill_forge(self.config).record_unknown_skill(skill_name, user_request)
+                except Exception as e:
+                    logger.error(f"Failed to record unknown skill in SkillForge: {e}")
                 continue
 
             try:
