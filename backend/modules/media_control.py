@@ -16,23 +16,33 @@ logger = logging.getLogger("MAX.MEDIA")
 
 # Mapping of action names to Windows Virtual Key codes
 _VK_MEDIA = {
-    "play":     0xB3,   # VK_MEDIA_PLAY_PAUSE
-    "pause":    0xB3,   # same key
-    "stop":     0xB2,   # VK_MEDIA_STOP
-    "next":     0xB0,   # VK_MEDIA_NEXT_TRACK
-    "previous": 0xB1,   # VK_MEDIA_PREV_TRACK
-    "prev":     0xB1,
-    "back":     0xB1,
+    "play":       0xB3,   # VK_MEDIA_PLAY_PAUSE
+    "pause":      0xB3,   # same key
+    "stop":       0xB2,   # VK_MEDIA_STOP
+    "next":       0xB0,   # VK_MEDIA_NEXT_TRACK
+    "previous":   0xB1,   # VK_MEDIA_PREV_TRACK
+    "prev":       0xB1,
+    "back":       0xB1,
+    "volumeup":   0xAF,   # VK_VOLUME_UP
+    "volumedown": 0xAE,   # VK_VOLUME_DOWN
+    "mute":       0xAD,   # VK_VOLUME_MUTE
 }
 
 _ALIASES = {
-    "playpause": "play",
-    "pp":        "play",
-    "fwd":       "next",
-    "forward":   "next",
-    "rewind":    "previous",
-    "rw":        "previous",
-    "bk":        "previous",
+    "playpause":    "play",
+    "pp":           "play",
+    "fwd":          "next",
+    "forward":      "next",
+    "rewind":       "previous",
+    "rw":           "previous",
+    "bk":           "previous",
+    "volume_up":    "volumeup",
+    "volume_down":  "volumedown",
+    "vol_up":       "volumeup",
+    "vol_down":     "volumedown",
+    "unmute":       "mute",
+    "volume up":    "volumeup",
+    "volume down":  "volumedown",
 }
 
 
