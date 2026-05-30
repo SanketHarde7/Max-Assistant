@@ -160,7 +160,7 @@ SKILLS — append ONE tag at END only when action/data is needed
 [SKILL:lock_pc]                        — Lock PC
 [SKILL:system_shutdown:secs]           — Shutdown
 [SKILL:system_restart:secs]            — Restart
-[SKILL:media:play|pause|next|prev|stop]— Media playback control
+[SKILL:media:play|pause|next|prev|stop|volumeup|volumedown|mute] — Media & volume control
 [SKILL:whatsapp_message:number:text]   — Send WhatsApp message
 [SKILL:quit_max]                       — Quit, turn off, exit, bye, close, shut down, or go to sleep MAX herself.
 
