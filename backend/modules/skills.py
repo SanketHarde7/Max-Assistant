@@ -496,13 +496,13 @@ class SkillsEngine:
     async def _skill_read_screen(self, *args) -> str:
         target = " ".join(args).strip()
         try:
-            from PIL import Image
-            import pyautogui as pg
+            from PIL import Image, ImageGrab
             ss_dir = Path(self.config.DATA_DIR) / "screenshots"
             ss_dir.mkdir(parents=True, exist_ok=True)
             path = ss_dir / "vision_debug.jpg"
-            region = None
-            if target and target.lower() != "all":
+            bbox = None
+            generic_targets = ["all", "screen", "window", "display", "monitor", "current"]
+            if target and target.lower() not in generic_targets:
                 try:
                     import pygetwindow as gw
                     wins = gw.getWindowsWithTitle(target)
@@ -513,10 +513,15 @@ class SkillsEngine:
                             time.sleep(0.7)
                         except Exception: 
                             pass
-                        region = (w.left, w.top, w.width, w.height)
+                        bbox = (w.left, w.top, w.left + w.width, w.top + w.height)
                 except ImportError:
                     pass
-            img = pg.screenshot(region=region).convert('RGB')
+            
+            if bbox:
+                img = ImageGrab.grab(bbox=bbox, all_screens=True).convert('RGB')
+            else:
+                img = ImageGrab.grab(all_screens=True).convert('RGB')
+                
             img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
             img.save(str(path), quality=70, optimize=True)
             
@@ -526,7 +531,7 @@ class SkillsEngine:
                 f"Describe what's visible on the '{target or 'screen'}'. Read URLs and text."
             )
         except ImportError:
-            return "pyautogui needed: pip install pyautogui pillow"
+            return "Pillow needed: pip install pillow"
         except Exception as e:
             import traceback
             logger.error(f"Screenshot Error: {e}\n{traceback.format_exc()}")
@@ -538,12 +543,11 @@ class SkillsEngine:
             titles = [t for t in gw.getAllTitles() if t.strip()]
             return "Open windows: " + ", ".join(titles[:10]) if titles else "No active windows."
         except ImportError:
-            return "pygetwindow needed: pip install pygetwindow"
+            return "pygetwindow needed"
 
     def _skill_screenshot(self, filename: str = "", **kw) -> str:
-        if not PYAUTOGUI_AVAILABLE:
-            return "pyautogui needed: pip install pyautogui"
         try:
+            from PIL import ImageGrab
             sd = Path(self.config.DATA_DIR) / "screenshots"
             sd.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -835,18 +839,47 @@ class SkillsEngine:
             return f"Lock failed: {str(e)[:120]}"
     
     def _skill_youtube_play(self, *args) -> str:
-        if not PYWHATKIT_AVAILABLE:
-            return "YouTube play needs: pip install pywhatkit"
         query = " ".join(args).strip()
         if not query:
             return "What should I play on YouTube?"
+        
+        # Strategy: Directly fetch YouTube search results HTML, extract first video ID,
+        # and open the watch page. No pywhatkit dependency needed.
         try:
-            pywhatkit.playonyt(query)
-            time.sleep(2)
-            return f"Playing '{query}' on YouTube."
+            import urllib.request
+            search_url = f"https://www.youtube.com/results?search_query={quote_plus(query)}"
+            req = urllib.request.Request(
+                search_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+            
+            # Extract first video ID from YouTube's JSON-embedded response
+            video_ids = re.findall(r'"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"', html)
+            if video_ids:
+                video_id = video_ids[0]
+                watch_url = f"https://www.youtube.com/watch?v={video_id}"
+                webbrowser.open(watch_url)
+                return f"Playing '{query}' on YouTube."
+            else:
+                # Fallback 1: Couldn't extract video ID, open search results page
+                logger.warning(f"YouTube play: No videoId found for '{query}', opening search page")
+                webbrowser.open(search_url)
+                return f"Playing '{query}' on YouTube."
         except Exception as e:
-             webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
-             return f"Directly youtube search opened because of failure {e}"
+            logger.warning(f"YouTube direct play failed: {e}")
+            # Fallback 2: Try pywhatkit if available
+            if PYWHATKIT_AVAILABLE:
+                try:
+                    pywhatkit.playonyt(query)
+                    time.sleep(2)
+                    return f"Playing '{query}' on YouTube."
+                except Exception as e2:
+                    logger.warning(f"pywhatkit YouTube fallback also failed: {e2}")
+            # Fallback 3: Open search results page directly
+            webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
+            return f"Opened YouTube search for '{query}'."
         
     def _skill_whatsapp_message(self, contact: str = "", message: str = "", **kw) -> str:
         if not PYWHATKIT_AVAILABLE: 
