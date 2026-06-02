@@ -334,7 +334,15 @@ class SkillsEngine:
         from modules.sysinfo import get_top_processes
         return get_top_processes(int(n) if n.isdigit() else 5)
 
-    def _skill_media(self, action: str = "play", *args) -> str:
+    async def _skill_media(self, action: str = "play", *args) -> str:
+        # If args are provided (e.g., [SKILL:media:play:arijit singh]), route to the intelligent media engine
+        if args and action == "play":
+            query = " ".join(args).strip()
+            if query:
+                from modules.media_engine import media_engine
+                return await media_engine.play_media(query)
+                
+        # Otherwise, fall back to OS-level media keys (play/pause/next/volume)
         from modules.media_control import media_action
         return media_action(action)
 
@@ -838,48 +846,13 @@ class SkillsEngine:
         except Exception as e:
             return f"Lock failed: {str(e)[:120]}"
     
-    def _skill_youtube_play(self, *args) -> str:
+    async def _skill_youtube_play(self, *args) -> str:
         query = " ".join(args).strip()
         if not query:
             return "What should I play on YouTube?"
         
-        # Strategy: Directly fetch YouTube search results HTML, extract first video ID,
-        # and open the watch page. No pywhatkit dependency needed.
-        try:
-            import urllib.request
-            search_url = f"https://www.youtube.com/results?search_query={quote_plus(query)}"
-            req = urllib.request.Request(
-                search_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                html = resp.read().decode("utf-8", errors="ignore")
-            
-            # Extract first video ID from YouTube's JSON-embedded response
-            video_ids = re.findall(r'"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"', html)
-            if video_ids:
-                video_id = video_ids[0]
-                watch_url = f"https://www.youtube.com/watch?v={video_id}"
-                webbrowser.open(watch_url)
-                return f"Playing '{query}' on YouTube."
-            else:
-                # Fallback 1: Couldn't extract video ID, open search results page
-                logger.warning(f"YouTube play: No videoId found for '{query}', opening search page")
-                webbrowser.open(search_url)
-                return f"Playing '{query}' on YouTube."
-        except Exception as e:
-            logger.warning(f"YouTube direct play failed: {e}")
-            # Fallback 2: Try pywhatkit if available
-            if PYWHATKIT_AVAILABLE:
-                try:
-                    pywhatkit.playonyt(query)
-                    time.sleep(2)
-                    return f"Playing '{query}' on YouTube."
-                except Exception as e2:
-                    logger.warning(f"pywhatkit YouTube fallback also failed: {e2}")
-            # Fallback 3: Open search results page directly
-            webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
-            return f"Opened YouTube search for '{query}'."
+        from modules.media_engine import media_engine
+        return await media_engine.play_media(query)
         
     def _skill_whatsapp_message(self, contact: str = "", message: str = "", **kw) -> str:
         if not PYWHATKIT_AVAILABLE: 
