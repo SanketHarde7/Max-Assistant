@@ -39,22 +39,28 @@ def _decode_audio_input(audio_data: Union[bytes, str]) -> bytes:
         return base64.b64decode(data)
 
 
-def _convert_webm_to_wav(webm_path: str) -> str:
-    """Convert webm to wav for better Whisper compatibility."""
+async def _convert_webm_to_wav(webm_path: str) -> str:
+    """Convert webm to wav asynchronously for better Whisper compatibility."""
     wav_path = webm_path.replace(".webm", ".wav")
     try:
-        result = subprocess.run(
-            ["ffmpeg", "-y", "-i", webm_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
-            capture_output=True,
-            text=True,
-            timeout=15
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", webm_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        if result.returncode == 0 and os.path.exists(wav_path) and os.path.getsize(wav_path) > 100:
-            return wav_path
+        try:
+            # Wait for process to complete with 15s timeout
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15.0)
+            if proc.returncode == 0 and os.path.exists(wav_path) and os.path.getsize(wav_path) > 100:
+                return wav_path
+        except asyncio.TimeoutError:
+            logger.warning("ffmpeg conversion timed out")
+            try:
+                proc.kill()
+            except Exception:
+                pass
     except FileNotFoundError:
         pass  # ffmpeg not available, fall back to webm
-    except subprocess.TimeoutExpired:
-        logger.warning("ffmpeg conversion timed out")
     except Exception as e:
         logger.debug(f"ffmpeg conversion failed: {e}")
     return webm_path
@@ -83,7 +89,7 @@ async def transcribe_audio(
             tmp_path = f.name
 
         # Try converting to wav for better compatibility
-        file_to_transcribe = _convert_webm_to_wav(tmp_path)
+        file_to_transcribe = await _convert_webm_to_wav(tmp_path)
         if file_to_transcribe != tmp_path:
             wav_path = file_to_transcribe
 
@@ -94,6 +100,7 @@ async def transcribe_audio(
             "file": ("audio.wav", audio_bytes, "audio/wav"),
             "model": model,
             "response_format": "text",
+            "prompt": "Max, Hey Max, please perform the command. Haan, kholo, band karo, pause music, next song, yes, no, open chrome, system shutdown, volume up.",
         }
 
         # Only pass language if explicitly specified
@@ -149,6 +156,7 @@ async def transcribe_file(
             "file": ("audio.wav", audio_bytes, "audio/wav"),
             "model": model,
             "response_format": "text",
+            "prompt": "Max, Hey Max, please perform the command. Haan, kholo, band karo, pause music, next song, yes, no, open chrome, system shutdown, volume up.",
         }
         if language:
             kwargs["language"] = language
@@ -179,3 +187,56 @@ async def transcribe_wake_word(
     except Exception as e:
         logger.error(f"Wake word STT failed: {e}")
         return ""
+
+
+import re
+
+def is_hallucination(transcript: str) -> bool:
+    if not transcript:
+        return True
+    
+    # Strip common punctuation from ends
+    text = transcript.lower().strip().rstrip(".।? ")
+    
+    hallucinations = {
+        # Original English noise / Whisper artifacts
+        "thank you", "thanks for watching", "thanks for watching.",
+        "subtitles by amara.org", "subtitles by amara.org.", "um", "you", "go",
+        "bye", "watching", "thanks", "please", "oh", "shirdi", "shirdi.",
+        
+        # Change 3: common single-letter/noise sounds
+        "ah", "uh", "eh", "mm", "hmm", "moo", "baa", "ma", "na", "ha",
+        
+        # Change 3: common Whisper Hindi artifacts
+        "हाँ", "हां", "अच्छा",
+        
+        # Change 3: generic audio words
+        "music", "audio", "hello", "the music"
+    }
+    
+    return text in hallucinations
+
+
+def is_valid_transcript(transcript: str) -> bool:
+    if not transcript or not transcript.strip():
+        return False
+        
+    # Check if transcript is in the expanded hallucination list (Change 3)
+    if is_hallucination(transcript):
+        return False
+
+    # Change 4: Single word filter
+    # Extract alphanumeric words using regex
+    words = re.findall(r'\b\w+\b', transcript.lower())
+    if len(words) == 1:
+        word = words[0]
+        # Known commands list (pause, play, volume, next, haan, nahi, etc.)
+        known_commands = {
+            "pause", "play", "volume", "next", "haan", "nahi", "yes", "no",
+            "stop", "cancel", "abort", "mute", "unmute", "kholo", "band",
+            "open", "close", "max", "hello", "hi", "help"
+        }
+        if word not in known_commands:
+            return False
+            
+    return True
