@@ -19,17 +19,18 @@
 
 import { useEffect, useRef, useCallback } from "react";
 
-const WS_URL  = "ws://localhost:8000/ws";
+const WS_URL  = "ws://127.0.0.1:8000/ws";
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
 export type BackendStatus = "connecting" | "connected" | "disconnected" | "offline";
 
 export interface BackendMessage {
-  event:      string;            // "greeting" | "transcript" | "response_text" | "audio_response" | "error" | "pong"
+  event:      string;            // "greeting" | "transcript" | "response_text" | "audio_response" | "error" | "pong" | "start_continuous_listening" | "stop_continuous_listening" | "stale_discard"
   text?:      string;
   audio?:     string;            // RAW base64 — prepend "data:audio/mp3;base64,"
   skill_used?: string | null;
   message?:   string;
+  command_id?: string;
 }
 
 interface UseBackendOptions {
