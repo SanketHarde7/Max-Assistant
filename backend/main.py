@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import config
 from agent_core import get_agent
-from modules.stt import transcribe_audio, transcribe_file, transcribe_wake_word
+from modules.stt import transcribe_audio, transcribe_file, transcribe_wake_word, is_valid_transcript
 from modules.tts import generate_tts
 from modules.llm import get_greeting
 from modules.skills import get_skills_engine
@@ -275,6 +275,163 @@ async def wake_check(request: WakeCheckRequest):
 # WEBSOCKET — Real-time Voice/Text Chat
 # ═══════════════════════════════════════════════════
 
+async def process_voice_request(
+    rid: str,
+    msg_payload: dict,
+    websocket: WebSocket,
+    agent: Any,
+    skills: Any,
+    connection_state: dict
+):
+    try:
+        # Staleness Check (Change 7)
+        client_ts = msg_payload.get("timestamp")
+        if client_ts:
+            import time as _time
+            current_time_ms = _time.time() * 1000
+            latency_sec = (current_time_ms - client_ts) / 1000.0
+            logger.info(f"Voice request {rid} latency: {latency_sec:.2f}s")
+            if latency_sec > 60.0:
+                logger.warning(f"Voice request {rid} is stale ({latency_sec:.2f}s > 60.0s). Discarding.")
+                await websocket.send_json({"event": "stale_discard", "command_id": rid})
+                return
+
+        if connection_state["current_request_id"] != rid:
+            logger.info(f"Voice task {rid} discarded before starting.")
+            return
+
+        audio_data = msg_payload.get("audio", msg_payload.get("data", ""))
+        if not audio_data:
+            return
+
+        from modules.stt import transcribe_audio
+        transcript = await transcribe_audio(audio_data)
+
+        if connection_state["current_request_id"] != rid:
+            logger.info(f"Voice task {rid} discarded after transcription.")
+            return
+
+        # Filter out empty, error, whisper hallucination transcripts, and single word non-commands
+        if not is_valid_transcript(transcript):
+            logger.info(f"STT returned invalid or hallucinated transcript: '{transcript}', skipping LLM")
+            if connection_state["current_request_id"] == rid:
+                await websocket.send_json({"event": "error", "message": "I didn't catch that. Please try again.", "command_id": rid})
+            return
+
+        lower_trans = transcript.lower().strip()
+        logger.info(f"STT: {transcript}")
+
+        if connection_state["current_request_id"] != rid:
+            logger.info(f"Voice task {rid} discarded before sending transcript.")
+            return
+
+        await websocket.send_json({
+            "event": "transcript",
+            "text": transcript,
+            "command_id": rid
+        })
+
+        # Intercept conversational follow-ups like "Haan", "Open", "Kholo", "Yes"
+        follow_up_words = ["haan", "open", "kholo", "yes", "khol"]
+        is_follow_up = any(word in lower_trans for word in follow_up_words)
+        
+        intercepted = False
+        if is_follow_up:
+            import glob
+            import time
+            from modules.web_autopilot import CACHE_DIR
+            
+            # Check both research cache AND code save dir for recently created files
+            files = glob.glob(str(CACHE_DIR / "*.*"))
+            try:
+                code_save_dir = config.CODE_SAVE_DIR
+                if code_save_dir.exists():
+                    files.extend(glob.glob(str(code_save_dir / "*.*")))
+            except Exception:
+                pass
+            latest_file = max(files, key=os.path.getmtime) if files else None
+            
+            # Check if latest file exists and was created in the last 5 minutes (300s)
+            if latest_file and (time.time() - os.path.getmtime(latest_file) < 300):
+                logger.info(f"Intercepted follow-up: Opening latest file: {latest_file}")
+                skills._skill_open_app(latest_file)
+                if connection_state["current_request_id"] == rid:
+                    await websocket.send_json({
+                        "event": "response_text",
+                        "text": f"Opening file: {os.path.basename(latest_file)}",
+                        "command_id": rid
+                    })
+                intercepted = True
+            else:
+                # Check for LAST_BOT_BYPASS_URL from web_autopilot
+                from modules.web_autopilot import LAST_BOT_BYPASS_URL, clear_last_bot_bypass_url
+                if LAST_BOT_BYPASS_URL:
+                    logger.info(f"Intercepted follow-up: Opening bot bypass URL: {LAST_BOT_BYPASS_URL}")
+                    skills._skill_web_open(LAST_BOT_BYPASS_URL)
+                    if connection_state["current_request_id"] == rid:
+                        await websocket.send_json({
+                            "event": "response_text",
+                            "text": "Opening blocked website on screen...",
+                            "command_id": rid
+                        })
+                    clear_last_bot_bypass_url()
+                    intercepted = True
+                    
+        if intercepted:
+            # Halt downstream LLM execution to stop continuous voice listening bleeding
+            return
+
+        result = await agent.process_text_input(transcript, use_tts=True, input_source="voice")
+        
+        if connection_state["current_request_id"] != rid:
+            logger.info(f"Voice task {rid} discarded before sending response.")
+            return
+
+        # ── Check for reserved listening state commands ──
+        if result.get("intent") == "reserved":
+            cmd = result.get("skill_used", "").replace("reserved:", "")
+            if cmd in ["stop listening", "sunna band karo", "cancel", "abort", "emergency stop"]:
+                await websocket.send_json({"event": "stop_continuous_listening", "command_id": rid})
+            elif cmd in ["start listening", "sunna shuru karo"]:
+                await websocket.send_json({"event": "start_continuous_listening", "command_id": rid})
+                
+        await websocket.send_json({
+            "event": "response_text",
+            "text": result.get("response", ""),
+            "skill_used": result.get("skill_used"),
+            "command_id": rid
+        })
+        
+        tts_path = result.get("tts_path", "")
+        if tts_path and os.path.exists(tts_path):
+            try:
+                with open(tts_path, "rb") as f:
+                    encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                    if connection_state["current_request_id"] == rid:
+                        await websocket.send_json({
+                            "event": "audio_response",
+                            "audio": encoded_audio,
+                            "command_id": rid
+                        })
+            except Exception as e:
+                logger.error(f"Voice TTS Read Error: {e}")
+                if connection_state["current_request_id"] == rid:
+                    await websocket.send_json({"event": "audio_response", "command_id": rid})
+        else:
+            if connection_state["current_request_id"] == rid:
+                await websocket.send_json({"event": "audio_response", "command_id": rid})
+    except asyncio.CancelledError:
+        logger.info(f"Voice task {rid} was asynchronously cancelled.")
+        raise
+    except Exception as e:
+        logger.error(f"Error processing voice request: {e}", exc_info=True)
+        try:
+            if connection_state["current_request_id"] == rid:
+                await websocket.send_json({"event": "error", "message": f"Backend Error: {str(e)}", "command_id": rid})
+        except Exception:
+            pass
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -283,6 +440,11 @@ async def websocket_endpoint(websocket: WebSocket):
     global active_websocket, main_loop
     active_websocket = websocket
     main_loop = asyncio.get_running_loop()
+
+    connection_state = {
+        "active_task": None,
+        "current_request_id": None
+    }
 
     agent = get_agent()
     skills = get_skills_engine(config)
@@ -375,115 +537,34 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     result = await agent.process_text_input(user_text, use_tts=True, input_source="text")
-                    await websocket.send_json({
-                        "event": "response_text",
-                        "text": result.get("response", ""),
-                        "skill_used": result.get("skill_used"),
-                    })
-                    tts_path = result.get("tts_path", "")
-                    if tts_path and os.path.exists(tts_path):
-                        try:
-                            with open(tts_path, "rb") as f:
-                                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
-                                await websocket.send_json({
-                                    "event": "audio_response",
-                                    "audio": encoded_audio
-                                })
-                        except Exception as e:
-                            logger.error(f"Text TTS Read Error: {e}")
-
-                # 3. HANDLE VOICE INPUT
-                elif msg_type == "voice" or msg_type == "audio":
-                    audio_data = msg.get("audio", msg.get("data", ""))
-                    if not audio_data:
-                        continue
-                    from modules.stt import transcribe_audio
-                    transcript = await transcribe_audio(audio_data)
-
-                    # Filter out empty, error, and whisper hallucination transcripts
-                    if not transcript or not transcript.strip():
-                        logger.info("STT returned empty transcript, skipping LLM")
-                        await websocket.send_json({"event": "error", "message": "I didn't catch that. Please try again."})
-                        continue
-
-                    lower_trans = transcript.lower().strip()
-                    hallucinations = ["thank you.", "thank you", "thanks for watching", "subtitles by amara.org"]
-                    if lower_trans in hallucinations:
-                        logger.info("STT returned hallucination, skipping LLM")
-                        await websocket.send_json({"event": "error", "message": "I didn't catch that. Please try again."})
-                        continue
-
-
-                    logger.info(f"STT: {transcript}")
-
-                    await websocket.send_json({
-                        "event": "transcript",
-                        "text": transcript
-                    })
-
-                    # Intercept conversational follow-ups like "Haan", "Open", "Kholo", "Yes"
-                    follow_up_words = ["haan", "open", "kholo", "yes", "khol"]
-                    is_follow_up = any(word in lower_trans for word in follow_up_words)
                     
-                    intercepted = False
-                    if is_follow_up:
-                        import glob
-                        import time
-                        from modules.web_autopilot import CACHE_DIR
+                    # ── Check for reserved listening state commands ──
+                    if result.get("intent") == "reserved":
+                        cmd = result.get("skill_used", "").replace("reserved:", "")
+                        if cmd in ["stop listening", "sunna band karo", "cancel", "abort", "emergency stop"]:
+                            await websocket.send_json({"event": "stop_continuous_listening"})
+                              # 3. HANDLE VOICE INPUT
+                elif msg_type == "voice" or msg_type == "audio":
+                    rid = msg.get("command_id") or msg.get("rid") or uuid.uuid4().hex
+                    
+                    # Cancel any active running task before starting a new one
+                    active_task = connection_state.get("active_task")
+                    if active_task and not active_task.done():
+                        active_task.cancel()
+                        logger.info(f"Canceled active task for command ID: {connection_state.get('current_request_id')}")
                         
-                        # Check both research cache AND code save dir for recently created files
-                        files = glob.glob(str(CACHE_DIR / "*.*"))
-                        try:
-                            code_save_dir = config.CODE_SAVE_DIR
-                            if code_save_dir.exists():
-                                files.extend(glob.glob(str(code_save_dir / "*.*")))
-                        except Exception:
-                            pass
-                        latest_file = max(files, key=os.path.getmtime) if files else None
-                        
-                        # Check if latest file exists and was created in the last 5 minutes (300s)
-                        if latest_file and (time.time() - os.path.getmtime(latest_file) < 300):
-                            logger.info(f"Intercepted follow-up: Opening latest file: {latest_file}")
-                            skills._skill_open_app(latest_file)
-                            await websocket.send_json({
-                                "event": "response_text",
-                                "text": f"Opening file: {os.path.basename(latest_file)}"
-                            })
-                            intercepted = True
-                        else:
-                            # Check for LAST_BOT_BYPASS_URL from web_autopilot
-                            from modules.web_autopilot import LAST_BOT_BYPASS_URL, clear_last_bot_bypass_url
-                            if LAST_BOT_BYPASS_URL:
-                                logger.info(f"Intercepted follow-up: Opening bot bypass URL: {LAST_BOT_BYPASS_URL}")
-                                skills._skill_web_open(LAST_BOT_BYPASS_URL)
-                                await websocket.send_json({
-                                    "event": "response_text",
-                                    "text": f"Opening blocked website on screen..."
-                                })
-                                clear_last_bot_bypass_url()
-                                intercepted = True
-                                
-                    if intercepted:
-                        # Halt downstream LLM execution to stop continuous voice listening bleeding
-                        continue
-
-                    result = await agent.process_text_input(transcript, use_tts=True, input_source="voice")
-                    await websocket.send_json({
-                        "event": "response_text",
-                        "text": result.get("response", ""),
-                        "skill_used": result.get("skill_used"),
-                    })
-                    tts_path = result.get("tts_path", "")
-                    if tts_path and os.path.exists(tts_path):
-                        try:
-                            with open(tts_path, "rb") as f:
-                                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
-                                await websocket.send_json({
-                                    "event": "audio_response",
-                                    "audio": encoded_audio
-                                })
-                        except Exception as e:
-                            logger.error(f"Voice TTS Read Error: {e}")
+                    connection_state["current_request_id"] = rid
+                    task = asyncio.create_task(
+                        process_voice_request(
+                            rid=rid,
+                            msg_payload=msg,
+                            websocket=websocket,
+                            agent=agent,
+                            skills=skills,
+                            connection_state=connection_state
+                        )
+                    )
+                    connection_state["active_task"] = task
                 # 3.5 HANDLE IMAGE INPUT
                 elif msg_type == "image":
                     image_data = msg.get("image_data", "")
@@ -533,16 +614,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Ensure temp image is deleted to save space
                         if os.path.exists(temp_filepath):
                             os.remove(temp_filepath)                 
-
+ 
                 # 4. KEEPALIVE / PING
                 elif msg_type == "ping":
                     await websocket.send_json({"event": "pong"})
-
+ 
                 # 5. CLEAR MEMORY
                 elif msg_type == "clear_memory":
                     msg_resp = await agent.clear_memory()
                     await websocket.send_json({"type": "system", "text": msg_resp})
-
+ 
                 # 5.5 EXECUTE SKILL
                 elif msg_type == "execute_skill":
                     skill_name = msg.get("skill")
@@ -559,10 +640,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         except Exception as e:
                             logger.error(f"WebSocket execute_skill failed: {e}")
                             await websocket.send_json({"event": "error", "message": f"Skill execution failed: {e}"})
-
+ 
                 # 6. ABORT / KILL SWITCH
                 elif msg_type == "abort":
                     logger.info("Client sent abort signal")
+                    active_task = connection_state.get("active_task")
+                    if active_task and not active_task.done():
+                        active_task.cancel()
+                        logger.info(f"Canceled active task via abort event for command ID: {connection_state.get('current_request_id')}")
             except Exception as e:
                 logger.error(f"WebSocket message error: {e}", exc_info=True)
                 try:
@@ -638,9 +723,8 @@ async def voice(request: VoiceRequest):
     agent = get_agent()
     transcript = await transcribe_audio(request.audio)
     
-    lower_trans = transcript.lower().strip()
-    hallucinations = ["thank you.", "thank you", "thanks for watching", "subtitles by amara.org", ""]
-    if lower_trans in hallucinations:
+    # Filter out empty, error, whisper hallucination transcripts, and single word non-commands
+    if not is_valid_transcript(transcript):
         return {
             "transcript": transcript,
             "response": "I didn't catch that. Please try again.",
