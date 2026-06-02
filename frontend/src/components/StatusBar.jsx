@@ -18,6 +18,7 @@ export default function StatusBar({
   error = null,
   onToggleChat,
   chatOpen = false,
+  continuousListening = false,
 }) {
   const [time, setTime] = useState('')
   const cfg = STATE_LABELS[state] || STATE_LABELS.idle
@@ -93,6 +94,47 @@ export default function StatusBar({
           >
             {connected ? 'ONLINE' : 'OFFLINE'}
           </span>
+
+          {/* Ambient Listening Badge */}
+          <AnimatePresence>
+            {continuousListening && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8, x: -10 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                exit={{ opacity: 0, scale: 0.8, x: -10 }}
+                style={{
+                  marginLeft: '1rem',
+                  padding: '0.2rem 0.6rem',
+                  background: 'rgba(0, 255, 136, 0.1)',
+                  border: '1px solid rgba(0, 255, 136, 0.3)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#00ff88',
+                    animation: 'statusDotPulse 1.5s ease infinite',
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: "'Share Tech Mono', monospace",
+                    fontSize: '0.65rem',
+                    color: '#00ff88',
+                    letterSpacing: '1px',
+                  }}
+                >
+                  AMBIENT LISTENING
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
