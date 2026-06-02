@@ -96,10 +96,10 @@ export function useWebSocket(url, { onEvent } = {}) {
   }, [url])
 
   // Send voice audio
-  const sendVoice = useCallback((audioBase64) => {
+  const sendVoice = useCallback((audioBase64, timestamp) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(
-        JSON.stringify({ type: 'voice', audio: audioBase64 })
+        JSON.stringify({ type: 'voice', audio: audioBase64, timestamp: timestamp || Date.now() })
       )
       return true
     }
