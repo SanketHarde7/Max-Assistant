@@ -86,7 +86,7 @@ class Config:
     # Language-specific controls
     TTS_RATE_EN: str = os.getenv("TTS_RATE_EN", TTS_RATE)
     TTS_PITCH_EN: str = os.getenv("TTS_PITCH_EN", TTS_PITCH)
-    TTS_RATE_HINDI: str = os.getenv("TTS_RATE_HINDI", "+20%")
+    TTS_RATE_HINDI: str = os.getenv("TTS_RATE_HINDI", "+30%")
     TTS_PITCH_HINDI: str = os.getenv("TTS_PITCH_HINDI", TTS_PITCH)
     
 
