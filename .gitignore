@@ -91,6 +91,7 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+border-test.html
 
 # ═══════════════════════════════════════════
 # AUDIO & MEDIA (if large)
