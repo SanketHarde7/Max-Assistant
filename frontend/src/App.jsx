@@ -42,10 +42,11 @@ function App() {
   const [messages, setMessages] = useState([])
   const [error, setError] = useState(null)
   const [chatOpen, setChatOpen] = useState(true)
+  const [continuousListening, setContinuousListening] = useState(false)
 
   // ── Hooks ──
   const { playAudio, stopAudio, isPlaying } = useAudioPlayer()
-  const { startRecording, stopRecording, isRecording, analyserNode } = useVoiceInput()
+  const { startRecording, stopRecording, startContinuousListening, stopContinuousListening, updateJarvisState, isRecording, analyserNode } = useVoiceInput()
 
   // ── WebSocket Event Handler ──
   const handleWsEvent = useCallback(
@@ -117,6 +118,18 @@ function App() {
           setTimeout(() => setError(null), 5000)
           break
 
+        case 'start_continuous_listening':
+          setContinuousListening(true)
+          break
+
+        case 'stop_continuous_listening':
+          setContinuousListening(false)
+          break
+
+        case 'stale_discard':
+          setMaxState('listening')
+          break
+
         case 'pong':
           break
 
@@ -156,6 +169,33 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [stopAudio])
 
+  // ── Continuous Listening VAD Hook ──
+  const handleSpeechCaptured = useCallback(async (audioBlob) => {
+    if (!audioBlob || audioBlob.size < 512) return
+    setMaxState('thinking')
+    try {
+      const base64 = await blobToBase64(audioBlob)
+      if (isConnected) {
+        sendVoice(base64, Date.now())
+      }
+    } catch (err) {
+      console.error('Speech send error:', err)
+      setMaxState('idle')
+    }
+  }, [isConnected, sendVoice])
+
+  useEffect(() => {
+    updateJarvisState(jarvisState)
+  }, [jarvisState, updateJarvisState])
+
+  useEffect(() => {
+    if (continuousListening) {
+      startContinuousListening(handleSpeechCaptured, jarvisState).catch(console.error)
+    } else {
+      stopContinuousListening()
+    }
+  }, [continuousListening, startContinuousListening, stopContinuousListening, handleSpeechCaptured])
+
   // ── Voice Handlers ──
   const handleMicPress = async () => {
     if (isRecording || jarvisState === 'thinking' || jarvisState === 'speaking')
@@ -186,7 +226,7 @@ function App() {
 
       // Try WebSocket first, fallback to REST
       if (isConnected) {
-        sendVoice(base64)
+        sendVoice(base64, Date.now())
       } else {
         // REST fallback
         const response = await fetch('http://localhost:8000/api/voice', {
@@ -385,6 +425,7 @@ function App() {
         error={error}
         onToggleChat={() => setChatOpen(!chatOpen)}
         chatOpen={chatOpen}
+        continuousListening={continuousListening}
       />
 
       {/* 3D Scene — Full Screen Canvas */}
