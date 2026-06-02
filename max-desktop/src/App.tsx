@@ -35,11 +35,14 @@ const App: React.FC = () => {
   const [orbState, setOrbState]   = useState<OrbState>("idle");
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
+  const [continuousListening, setContinuousListening] = useState(true);
 
   // 🧠 WEB AUTOPILOT REGISTRATION STATE REFS
   const lastResearchFileRef = useRef<string | null>(null);
   const botBypassUrlRef = useRef<string | null>(null);
   const ignoreResponseRef = useRef<boolean>(false);
+  const currentCommandIdRef = useRef<string>("");
+  const lastSpeechEndRef     = useRef<number>(0);
 
   const dragTimerRef     = useRef<number | null>(null);
   const dragStartedRef   = useRef(false);
@@ -89,16 +92,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleForceStop = useCallback(async () => {
-    try {
-      await fetch("http://localhost:8000/api/stop", { method: "POST" });
-    } catch (err) {
-      console.warn("Backend /api/stop unreachable:", err);
-    }
-    stopSpeaking();
-    setOrbState("idle");
-    showToast("🛑 Terminated");
-  }, [stopSpeaking, showToast]);
+
 
   const triggerHibernate = useCallback(async (reason: string) => {
     if (hibernateInFlightRef.current) return;
@@ -165,7 +159,25 @@ const App: React.FC = () => {
   }, [triggerHibernate]);
 
   const handleBackendMessage = useCallback((msg: BackendMessage) => {
+    if (msg.command_id && msg.command_id !== currentCommandIdRef.current) {
+      console.log(`[App] Discarding stale backend message for ${msg.command_id}`);
+      return;
+    }
+
     switch (msg.event) {
+      case "stale_discard":
+        setOrbState("idle");
+        showToast("⚠️ Discarded stale request");
+        break;
+      case "start_continuous_listening":
+        setContinuousListening(true);
+        showToast("🎙️ Ambient Listening ON");
+        break;
+      case "stop_continuous_listening":
+        setContinuousListening(false);
+        setOrbState("idle");
+        showToast("🔇 Ambient Listening OFF");
+        break;
       case "greeting":
         if (msg.text) showToast(msg.text);
         break;
@@ -254,6 +266,18 @@ const App: React.FC = () => {
 
   const { send } = useBackend({ onMessage: handleBackendMessage, onStatusChange: handleStatusChange });
 
+  const handleForceStop = useCallback(async () => {
+    try {
+      await fetch("http://localhost:8000/api/stop", { method: "POST" });
+    } catch (err) {
+      console.warn("Backend /api/stop unreachable:", err);
+    }
+    send({ type: "abort", command_id: currentCommandIdRef.current });
+    stopSpeaking();
+    setOrbState("idle");
+    showToast("🛑 Terminated");
+  }, [stopSpeaking, showToast, send]);
+
   // Smart interception loop for conversational follow-ups (Yes/No handling)
   const handleVoiceCommandInterpretation = (userText: string): boolean => {
     // Standard JS trim handles whitespace cleanup safely without custom .strip extensions
@@ -288,19 +312,57 @@ const App: React.FC = () => {
     return false; 
   };
 
+  const handleSpeechStart = useCallback(() => {
+    if (Date.now() - lastSpeechEndRef.current < 800) {
+      console.log("[App] VAD Speech started ignored (cooldown period)");
+      return;
+    }
+    console.log("[App] VAD Speech started. Interrupting playback...");
+    stopSpeaking();
+    if (currentCommandIdRef.current) {
+      send({ type: "abort", command_id: currentCommandIdRef.current });
+    }
+    setOrbState("listening");
+  }, [send, stopSpeaking]);
+
   const handleAudioReady = useCallback((base64: string) => {
+    lastSpeechEndRef.current = Date.now();
+    const commandId = `cmd_${Date.now()}`;
+    currentCommandIdRef.current = commandId;
     setOrbState("processing");
-    if (!send({ type: "voice", audio: base64 })) {
+    if (!send({ type: "voice", audio: base64, command_id: commandId, timestamp: Date.now() })) {
       showError("Backend not connected");
+      setOrbState("idle");
     }
   }, [send, showError]);
 
-  const { isRecording, startRecording, stopRecording } = useVoice({
+  const { isRecording, startRecording, stopRecording, startContinuousListening, stopContinuousListening, updateJarvisState } = useVoice({
     onAudioReady: handleAudioReady,
     onError: showError,
+    onSpeechStart: handleSpeechStart,
   });
 
+  useEffect(() => {
+    updateJarvisState(orbState);
+  }, [orbState, updateJarvisState]);
+
+  useEffect(() => {
+    if (continuousListening) {
+      startContinuousListening(orbState).catch(console.error);
+    } else {
+      stopContinuousListening();
+    }
+  }, [continuousListening, startContinuousListening, stopContinuousListening]);
+
+  // Keep orb in 'listening' visual state during ambient mode when idle
+  useEffect(() => {
+    if (continuousListening && orbState === "idle") {
+      setOrbState("listening");
+    }
+  }, [continuousListening, orbState]);
+
   const handleSingleClick = useCallback(() => {
+    // When speaking or processing, tap = force stop MAX
     if (orbState === "speaking" || orbState === "processing") {
       handleForceStop();
       return;
@@ -309,6 +371,11 @@ const App: React.FC = () => {
       showError("Backend offline");
       return;
     }
+    // If continuous listening is active, tap does nothing (VAD handles everything)
+    if (continuousListening) {
+      return;
+    }
+    // Manual push-to-talk fallback (only when continuous listening is OFF)
     if (isRecording) {
       stopRecording();
       setOrbState("processing");
@@ -316,7 +383,7 @@ const App: React.FC = () => {
     }
     startRecording();
     setOrbState("listening");
-  }, [orbState, isRecording, startRecording, stopRecording, handleForceStop, showError]);
+  }, [orbState, isRecording, continuousListening, startRecording, stopRecording, handleForceStop, showError]);
 
   const handleOpenFrontend = useCallback(async () => {
     try {
