@@ -8,6 +8,7 @@ import sys
 import logging
 import base64
 import re
+import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -109,14 +110,15 @@ async def _on_startup():
 
     _threading.Thread(target=_build_kb, daemon=True, name="MAX-KB-Init").start()
 
-    # 3. Health Buddy daemon
-    try:
-        global health_buddy_instance
-        health_buddy_instance = HealthBuddy(send_health_buddy_alert)
-        health_buddy_instance.start()
-        logger.info("Health Buddy started")
-    except Exception as e:
-        logger.warning(f"Health Buddy start failed: {e}")
+    # 3. Health Buddy daemon (DISABLED — user reported unsolicited voice alerts)
+    # To re-enable, uncomment the lines below:
+    # try:
+    #     global health_buddy_instance
+    #     health_buddy_instance = HealthBuddy(send_health_buddy_alert)
+    #     health_buddy_instance.start()
+    #     logger.info("Health Buddy started")
+    # except Exception as e:
+    #     logger.warning(f"Health Buddy start failed: {e}")
 
 
 @app.on_event("shutdown")
@@ -543,7 +545,31 @@ async def websocket_endpoint(websocket: WebSocket):
                         cmd = result.get("skill_used", "").replace("reserved:", "")
                         if cmd in ["stop listening", "sunna band karo", "cancel", "abort", "emergency stop"]:
                             await websocket.send_json({"event": "stop_continuous_listening"})
-                              # 3. HANDLE VOICE INPUT
+                        elif cmd in ["start listening", "sunna shuru karo"]:
+                            await websocket.send_json({"event": "start_continuous_listening"})
+
+                    # ── Send response back to frontend ──
+                    await websocket.send_json({
+                        "event": "response_text",
+                        "text": result.get("response", ""),
+                        "skill_used": result.get("skill_used"),
+                    })
+
+                    tts_path = result.get("tts_path", "")
+                    if tts_path and os.path.exists(tts_path):
+                        try:
+                            with open(tts_path, "rb") as f:
+                                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                                await websocket.send_json({
+                                    "event": "audio_response",
+                                    "audio": encoded_audio,
+                                })
+                        except Exception as e:
+                            logger.error(f"Text TTS Read Error: {e}")
+                            await websocket.send_json({"event": "audio_response"})
+                    else:
+                        await websocket.send_json({"event": "audio_response"})
+
                 elif msg_type == "voice" or msg_type == "audio":
                     rid = msg.get("command_id") or msg.get("rid") or uuid.uuid4().hex
                     
