@@ -86,6 +86,24 @@ def _truncate_for_tts(result: str, skill_name: str) -> str:
     return f"{truncated} Details on screen."
 
 
+def open_url_in_browser(url: str) -> None:
+    logger.info(f"Opening URL in browser: {url}")
+    try:
+        if platform.system() == "Windows":
+            os.startfile(url)
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", url])
+        else:
+            subprocess.Popen(["xdg-open", url])
+    except Exception as e:
+        logger.error(f"Native browser open failed: {e}. Falling back to webbrowser.")
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception as e2:
+            logger.error(f"Fallback webbrowser failed: {e2}")
+
+
 class SkillsEngine:
 
     SKILL_PATTERN = re.compile(r'\[SKILL:([a-zA-Z_]+)(?::([^\]]*))?\]')
@@ -250,6 +268,30 @@ class SkillsEngine:
         if not matches:
             return {"executed": False, "clean_text": response_text, "is_data_skill": False}
 
+        # Deduplicate redundant skills (e.g. open_app:youtube + youtube_play:music)
+        filtered_matches = []
+        has_youtube_play = any(m.group(1).lower() in ("youtube_play", "youtube_search") for m in matches)
+        has_whatsapp_msg = any(m.group(1).lower() == "whatsapp_message" for m in matches)
+        
+        for m in matches:
+            name = m.group(1).lower()
+            params = m.group(2) or ""
+            
+            if name in ("open_app", "web_open"):
+                param_lower = params.lower()
+                if has_youtube_play and "youtube" in param_lower:
+                    logger.info(f"Skipping redundant {name}:{params} because specific youtube skill is active.")
+                    continue
+                if has_whatsapp_msg and "whatsapp" in param_lower:
+                    logger.info(f"Skipping redundant {name}:{params} because whatsapp_message skill is active.")
+                    continue
+            filtered_matches.append(m)
+        
+        matches = filtered_matches
+        
+        if not matches:
+            return {"executed": False, "clean_text": response_text, "is_data_skill": False}
+
         results = []
         tts_results = []
         executed_any = False
@@ -312,7 +354,7 @@ class SkillsEngine:
     def _skill_quit_max(self, *args) -> str:
         """Sends hibernate signal to frontend. Rust will handle the actual kill."""
         logger.info("Sending HIBERNATE signal. Handing over kill authority to Rust Tauri.")
-        return "[ACTION:HIBERNATE] I am going to sleep now. Just click my tray icon if you need me!"
+        return "[ACTION:HIBERNATE] I am shutting down completely now. Goodbye!"
 
     # ════════════════════════════════════════════
     # SYSTEM INFO SKILLS
@@ -437,12 +479,12 @@ class SkillsEngine:
                     return abstract[:300]
         except Exception:
             pass
-        webbrowser.open(f"https://duckduckgo.com/?q={quote_plus(query)}")
+        open_url_in_browser(f"https://duckduckgo.com/?q={quote_plus(query)}")
         return f"Opened browser search for '{query}'."
 
     def _skill_youtube_search(self, *args) -> str:
         query = " ".join(args).strip()
-        webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
+        open_url_in_browser(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
         return "YouTube search opened."
 
     def _skill_clear_memory(self) -> str:
@@ -582,10 +624,24 @@ class SkillsEngine:
         "task manager": "taskmgr.exe", "taskmgr": "taskmgr.exe",
         "chrome": "start chrome", "google chrome": "start chrome", "firefox": "start firefox",
         "edge": "start msedge", "brave": "start brave", "opera": "start opera",
+        "browser": "start msedge", "default browser": "start msedge",
+        "my browser": "start msedge", "web browser": "start msedge",
         "vscode": "code", "vs code": "code", "visual studio code": "code",
         "word": "start winword", "excel": "start excel", "powerpoint": "start powerpnt",
         "outlook": "start outlook", "vlc": "start vlc", "obs": "start obs64",
         "pycharm": "pycharm64", "postman": "start postman", "figma": "start figma",
+        "settings": "start ms-settings:", "control panel": "control.exe",
+        "snipping tool": "snippingtool.exe", "screen recorder": "start ms-screenclip:",
+    }
+
+    # Words that should NEVER be treated as web domains in the fallback resolver
+    _NON_WEB_WORDS = {
+        "browser", "app", "application", "settings", "system", "desktop",
+        "screen", "window", "folder", "file", "document", "music",
+        "video", "photo", "camera", "store", "help", "search",
+        "terminal", "console", "editor", "player", "recorder",
+        "manager", "monitor", "control", "panel", "tool",
+        "default browser", "my browser", "web browser",
     }
 
     def _skill_open_app(self, *args, **kw) -> str:
@@ -605,82 +661,117 @@ class SkillsEngine:
             app_lower = app_name.lower()
             success = False
 
-            if system == "Windows":
-                # 1. Try protocol handlers (whatsapp:, spotify:, etc.)
-                proto = self._WIN_PROTOCOLS.get(app_lower)
-                if proto:
-                    try:
-                        os.startfile(proto)
-                        results.append(f"{app_name} opened.")
-                        success = True
-                    except Exception as e:
-                        logger.warning(f"Protocol launch failed for {app_name}: {e}")
+            # Check if this app request is actually a web domain or in our fallback map
+            is_web = (
+                app_lower in web_map or
+                app_lower.startswith(("http://", "https://", "www.")) or
+                ("." in app_lower and " " not in app_lower)
+            )
 
-                # 2. Try direct executables
-                if not success:
-                    exe = self._WIN_DIRECT.get(app_lower)
-                    if exe:
+            if is_web:
+                # Bypass local launching and use 3-layer system to resolve/open URL
+                try:
+                    from modules.web_autopilot import WebAutopilotEngine
+                    autopilot = WebAutopilotEngine(self.config)
+                    verified_url = autopilot.resolve_accurate_url_sync(app_name)
+                    if verified_url:
+                        open_url_in_browser(verified_url)
+                        clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
+                        clean_name = clean_name.split("/")[0].split(".")[0].capitalize()
+                        results.append(f"{app_name} opened in browser.")
+                        success = True
+                except Exception as url_err:
+                    logger.warning(f"Failed to resolve {app_name} via 3-layer system: {url_err}")
+
+            if not success and not is_web:
+                if system == "Windows":
+                    # 1. Try protocol handlers (whatsapp:, spotify:, etc.)
+                    proto = self._WIN_PROTOCOLS.get(app_lower)
+                    if proto:
                         try:
-                            proc = subprocess.Popen(exe, shell=True)
-                            # Give it a moment to fail
+                            os.startfile(proto)
+                            results.append(f"{app_name} opened.")
+                            success = True
+                        except Exception as e:
+                            logger.warning(f"Protocol launch failed for {app_name}: {e}")
+
+                    # 2. Try direct executables
+                    if not success:
+                        exe = self._WIN_DIRECT.get(app_lower)
+                        if exe:
+                            try:
+                                proc = subprocess.Popen(exe, shell=True)
+                                # Give it a moment to fail
+                                import time
+                                time.sleep(0.3)
+                                if proc.poll() is None or proc.returncode == 0:
+                                    results.append(f"{app_name} opened.")
+                                    success = True
+                                else:
+                                    logger.warning(f"Direct exe launch failed for {app_name}: exit code {proc.returncode}")
+                            except Exception as e:
+                                logger.warning(f"Direct exe launch error for {app_name}: {e}")
+
+                    # 3. Try app indexer (fuzzy match installed apps)
+                    if not success:
+                        try:
+                            match = self.app_indexer.find_app(app_lower)
+                            if match:
+                                matched_name, app_path = match
+                                os.startfile(app_path)
+                                results.append(f"{matched_name.title() or app_name} opened.")
+                                success = True
+                        except Exception as e:
+                            logger.warning(f"App indexer launch failed for {app_name}: {e}")
+
+                    # 4. Last resort: try raw command
+                    if not success:
+                        try:
+                            proc = subprocess.Popen(app_lower, shell=True)
                             import time
                             time.sleep(0.3)
                             if proc.poll() is None or proc.returncode == 0:
                                 results.append(f"{app_name} opened.")
                                 success = True
                             else:
-                                logger.warning(f"Direct exe launch failed for {app_name}: exit code {proc.returncode}")
+                                logger.warning(f"Raw command launch failed for {app_name}: exit code {proc.returncode}")
                         except Exception as e:
-                            logger.warning(f"Direct exe launch error for {app_name}: {e}")
+                            logger.warning(f"Raw command launch error for {app_name}: {e}")
 
-                # 3. Try app indexer (fuzzy match installed apps)
-                if not success:
+                elif system == "Darwin":
                     try:
-                        match = self.app_indexer.find_app(app_lower)
-                        if match:
-                            matched_name, app_path = match
-                            os.startfile(app_path)
-                            results.append(f"{matched_name.title() or app_name} opened.")
-                            success = True
+                        subprocess.run(["open", "-a", mac_map.get(app_lower, app_name)], check=True)
+                        results.append(f"{app_name} opened.")
+                        success = True
                     except Exception as e:
-                        logger.warning(f"App indexer launch failed for {app_name}: {e}")
+                        logger.warning(f"macOS launch failed for {app_name}: {e}")
 
-                # 4. Last resort: try raw command
-                if not success:
+                else:
                     try:
-                        proc = subprocess.Popen(app_lower, shell=True)
-                        import time
-                        time.sleep(0.3)
-                        if proc.poll() is None or proc.returncode == 0:
-                            results.append(f"{app_name} opened.")
-                            success = True
-                        else:
-                            logger.warning(f"Raw command launch failed for {app_name}: exit code {proc.returncode}")
+                        subprocess.Popen([app_lower])
+                        results.append(f"{app_name} opened.")
+                        success = True
                     except Exception as e:
-                        logger.warning(f"Raw command launch error for {app_name}: {e}")
-
-            elif system == "Darwin":
-                try:
-                    subprocess.run(["open", "-a", mac_map.get(app_lower, app_name)], check=True)
-                    results.append(f"{app_name} opened.")
-                    success = True
-                except Exception as e:
-                    logger.warning(f"macOS launch failed for {app_name}: {e}")
-
-            else:
-                try:
-                    subprocess.Popen([app_lower])
-                    results.append(f"{app_name} opened.")
-                    success = True
-                except Exception as e:
-                    logger.warning(f"Linux launch failed for {app_name}: {e}")
+                        logger.warning(f"Linux launch failed for {app_name}: {e}")
 
             if not success:
-                fallback = web_map.get(app_lower)
-                if fallback:
-                    webbrowser.open(fallback)
-                    results.append(f"{app_name} not found locally. Opened in browser.")
-                else:
+                # Don't try web fallback for generic/ambiguous words
+                if app_lower not in self._NON_WEB_WORDS:
+                    # If local search failed, try 3-layer system as ultimate fallback
+                    try:
+                        from modules.web_autopilot import WebAutopilotEngine
+                        autopilot = WebAutopilotEngine(self.config)
+                        verified_url = autopilot.resolve_accurate_url_sync(app_name)
+                        if verified_url:
+                            open_url_in_browser(verified_url)
+                            clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
+                            clean_name = clean_name.split("/")[0].split(".")[0].capitalize()
+                            results.append(f"{app_name} not found locally. Opened in browser.")
+                            success = True
+                    except Exception as url_err:
+                        logger.warning(f"Fallback resolve for {app_name} failed: {url_err}")
+
+                if not success:
                     results.append(f"Could not find '{app_name}'.")
                     logger.error(f"All launch methods failed for: {app_name}")
 
@@ -722,7 +813,6 @@ class SkillsEngine:
         urls_to_open = url.split(",")
         results = []
         
-        import webbrowser
         import time
         from modules.web_autopilot import WebAutopilotEngine
         autopilot = WebAutopilotEngine(self.config)
@@ -738,14 +828,14 @@ class SkillsEngine:
                 clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
                 clean_name = clean_name.split("/")[0].split(".")[0].capitalize()
                 
-                webbrowser.open_new_tab(verified_url)
+                open_url_in_browser(verified_url)
                 time.sleep(0.4) 
                 results.append(f"{clean_name} opened")
                 
             except Exception as e:
                 logger.error(f"Failed to open verified route for {u}: {e}")
                 fallback_url = u if u.startswith(("http://", "https://")) else f"https://{u}"
-                webbrowser.open_new_tab(fallback_url)
+                open_url_in_browser(fallback_url)
                 results.append(f"{u} opened")
                 
         return ", ".join(results) + "."
