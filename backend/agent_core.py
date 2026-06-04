@@ -19,7 +19,7 @@ from modules.llm import get_response, get_response_with_skill_result, get_greeti
 from modules.skills import get_skills_engine
 from modules.memory import get_memory_manager
 from modules.tts import generate_tts
-from modules.language_detector import is_hindi_by_regex
+
 from modules.gatekeeper import get_gatekeeper
 from modules.Intent_engine import get_intent_engine
 from modules.listening_manager import ListeningManager
@@ -201,15 +201,7 @@ class MaxAgent:
             tts_path = ""
             if use_tts and filtered:
                 tts_text = self.gatekeeper.filter_for_tts(filtered, max_chars=300)
-                voice_override = ""
-                source = (input_source or "").lower()
-                if source == "text":
-                    try:
-                        if is_hindi_by_regex(text):
-                            voice_override = self.config.TTS_VOICE_HINDI
-                    except Exception as e:
-                        logger.debug(f"Regex Hindi detect failed: {e}")
-                tts_path = await generate_tts(tts_text, voice=voice_override)
+                tts_path = await generate_tts(tts_text)
 
             return {
                 "response": filtered,
