@@ -23,7 +23,8 @@
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "center": false
+        "center": false,
+        "shadow": false
       },
       {
         "label": "overlay",
@@ -33,7 +34,8 @@
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "visible": false
+        "visible": false,
+        "shadow": false
       }
     ],
     "security": {
