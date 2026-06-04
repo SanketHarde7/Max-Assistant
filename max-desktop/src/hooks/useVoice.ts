@@ -45,9 +45,19 @@ function bufferToWav(buffer: Float32Array, sampleRate: number = 16000): Blob {
   writeString(view, 36, 'data');
   view.setUint32(40, bufferLength * 2, true);
   
+  // Find maximum amplitude for peak normalization
+  let maxVal = 0;
+  for (let i = 0; i < bufferLength; i++) {
+    const absVal = Math.abs(buffer[i]);
+    if (absVal > maxVal) maxVal = absVal;
+  }
+  
+  // Scale samples so peak reaches 0.9 (avoiding hard clipping)
+  const scale = maxVal > 0 ? (0.9 / maxVal) : 1.0;
+  
   let offset = 44;
   for (let i = 0; i < bufferLength; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, buffer[i]));
+    let s = Math.max(-1, Math.min(1, buffer[i] * scale));
     view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
   
@@ -144,6 +154,8 @@ export function useVoice({ onAudioReady, onError, onSpeechStart }: UseVoiceOptio
       jarvisStateRef.current = state;
       isContinuousActiveRef.current = true;
 
+      const stream = await ensureAudio();
+
       if (vadRef.current) {
         vadRef.current.start();
         return;
@@ -159,6 +171,7 @@ export function useVoice({ onAudioReady, onError, onSpeechStart }: UseVoiceOptio
       const { MicVAD } = await import("@ricky0123/vad-web");
       
       const myvad = await MicVAD.new({
+        stream: stream,
         onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/",
         baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
         onSpeechStart: () => {
@@ -171,8 +184,8 @@ export function useVoice({ onAudioReady, onError, onSpeechStart }: UseVoiceOptio
           console.log("[VAD] onSpeechEnd triggered, frames:", audio.length);
           if (!isContinuousActiveRef.current) return;
 
-          // Only emit if recording is at least 250ms (16000Hz * 0.25 = 4000 samples)
-          if (audio.length >= 4000) {
+          // Only emit if recording is at least 400ms (16000Hz * 0.4 = 6400 samples)
+          if (audio.length >= 6400) {
             try {
               const wavBlob = bufferToWav(audio, 16000);
               const b64 = await blobToBase64(wavBlob);
@@ -184,12 +197,13 @@ export function useVoice({ onAudioReady, onError, onSpeechStart }: UseVoiceOptio
             console.log("[VAD] Speech chunk discarded (too short)");
           }
         },
-        // Optimal Silero parameters
-        positiveSpeechThreshold: 0.6,
-        negativeSpeechThreshold: 0.45,
-        minSpeechMs: 100,
-        redemptionMs: 240, // ~240ms of silence to trigger end
-      });
+        // Strict Silero parameters for high noise rejection
+        // Higher threshold = requires more confidence that it's actual speech
+        positiveSpeechThreshold: 0.80,
+        negativeSpeechThreshold: 0.55,
+        minSpeechMs: 400,
+        redemptionMs: 500,
+      } as any);
       
       vadRef.current = myvad;
       isInitializingRef.current = false;
