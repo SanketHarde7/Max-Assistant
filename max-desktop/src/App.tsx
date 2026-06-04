@@ -107,10 +107,10 @@ const App: React.FC = () => {
     setOrbState("idle");
 
     try {
-      console.log(`Hibernate triggered: ${reason}`);
-      await invoke("hibernate_backend");
+      console.log(`Exit triggered: ${reason}`);
+      await invoke("exit_app");
     } catch (e) {
-      console.error("Failed to invoke Rust hibernate:", e);
+      console.error("Failed to invoke Rust exit_app:", e);
     } finally {
       hibernateInFlightRef.current = false;
     }
