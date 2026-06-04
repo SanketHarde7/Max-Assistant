@@ -48,7 +48,7 @@ body,
   inset: 0;
   border-radius: 999px;
   z-index: 2;
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border: 0.5px solid rgba(255, 255, 255, 0.15);
   transition: border-color 0.4s ease;
 }
 
@@ -177,40 +177,40 @@ body,
 .circle-icon.processing {
   background: conic-gradient(
     from 0deg,
-    #c96a00, #ff9f1c, #ffc56b, #ff9f1c, #c96a00
+    #b0c4de, #d6e4f0, #eaf2fb, #d6e4f0, #b0c4de
   );
   box-shadow:
-    0 0 22px rgba(255, 159, 28, 0.7),
-    0 0 45px rgba(255, 159, 28, 0.25),
-    inset 0 0 14px rgba(255, 197, 107, 0.4);
+    0 0 22px rgba(176, 196, 222, 0.5),
+    0 0 45px rgba(200, 220, 245, 0.2),
+    inset 0 0 14px rgba(220, 235, 255, 0.35);
   animation: orbRotate 1.5s linear infinite, processPulse 1.2s ease-in-out infinite;
 }
 
 .circle-icon.processing .orb-core {
-  background: radial-gradient(circle at 35% 35%, #ffe4b0 0%, #ff9f1c 50%, #c96a00 100%);
-  box-shadow: 0 0 15px rgba(255, 197, 107, 0.7);
+  background: radial-gradient(circle at 35% 35%, #f0f5ff 0%, #c8ddf5 50%, #a8c4e0 100%);
+  box-shadow: 0 0 15px rgba(200, 220, 245, 0.6);
   animation: coreProcessPulse 0.6s ease-in-out infinite;
 }
 
 .circle-icon.processing .orb-shell {
-  border-color: rgba(255, 197, 107, 0.4);
+  border-color: rgba(200, 220, 245, 0.3);
   animation: shellSpin 2s linear infinite;
 }
 
 .circle-icon.processing .orb-ring {
-  border: 2px dashed rgba(255, 159, 28, 0.35);
+  border: 1px dashed rgba(176, 196, 222, 0.25);
   animation: ringSpinReverse 3s linear infinite;
 }
 
 .circle-icon.processing .orb-particles::before {
-  background: #ffc56b;
-  box-shadow: 0 0 8px #ffc56b;
+  background: #d6e4f0;
+  box-shadow: 0 0 8px #d6e4f0;
   animation: particleOrbit1 1.5s linear infinite;
 }
 
 .circle-icon.processing .orb-particles::after {
-  background: #ffe4b0;
-  box-shadow: 0 0 6px #ffe4b0;
+  background: #eaf2fb;
+  box-shadow: 0 0 6px #eaf2fb;
   animation: particleOrbit2 2.5s linear infinite reverse;
 }
 
