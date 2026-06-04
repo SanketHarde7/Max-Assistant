@@ -19,6 +19,27 @@ from modules.llm import get_client
 
 logger = logging.getLogger("Jarvis")
 
+
+def open_url_in_browser(url: str) -> None:
+    logger.info(f"[MediaEngine] Opening URL: {url}")
+    try:
+        import platform
+        import subprocess
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(url)
+        elif system == "Darwin":
+            subprocess.Popen(["open", url])
+        else:
+            subprocess.Popen(["xdg-open", url])
+    except Exception as e:
+        logger.error(f"[MediaEngine] Native browser open failed: {e}. Falling back to webbrowser.")
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception as e2:
+            logger.error(f"[MediaEngine] Fallback webbrowser failed: {e2}")
+
 # ── Storage paths ──
 DATA_DIR = Path(config.DATA_DIR)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -513,7 +534,7 @@ Reply with ONLY the index number (0, 1, or 2). Nothing else."""
             if not results:
                 # Last resort: just open YouTube search in browser
                 logger.warning("[MediaEngine] All searches failed, opening YouTube search page")
-                webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(search_query)}")
+                open_url_in_browser(f"https://www.youtube.com/results?search_query={quote_plus(search_query)}")
                 return f"Couldn't find exact results, so I opened YouTube search for '{raw_query}'."
 
             # Classify & filter
@@ -523,7 +544,7 @@ Reply with ONLY the index number (0, 1, or 2). Nothing else."""
                 filtered = [r for r in results if r and r.get('id')]
 
             if not filtered:
-                webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(search_query)}")
+                open_url_in_browser(f"https://www.youtube.com/results?search_query={quote_plus(search_query)}")
                 return f"Filters were too strict. Opened YouTube search for '{raw_query}'."
 
             # Score locally
@@ -536,7 +557,7 @@ Reply with ONLY the index number (0, 1, or 2). Nothing else."""
                 best_match = scored[0]
 
             if not best_match or not best_match.get('id'):
-                webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(search_query)}")
+                open_url_in_browser(f"https://www.youtube.com/results?search_query={quote_plus(search_query)}")
                 return f"Opened YouTube search for '{raw_query}'."
 
             # Build watch URL and play
@@ -544,7 +565,7 @@ Reply with ONLY the index number (0, 1, or 2). Nothing else."""
             watch_url = f"https://www.youtube.com/watch?v={video_id}"
             logger.info(f"[MediaEngine] Playing: {best_match.get('title')} → {watch_url}")
 
-            webbrowser.open(watch_url)
+            open_url_in_browser(watch_url)
             self.session.start_playback(raw_query, best_match, scored)
 
             title = best_match.get('title', raw_query)
@@ -564,7 +585,7 @@ Reply with ONLY the index number (0, 1, or 2). Nothing else."""
             logger.error(f"[MediaEngine] play_media crashed: {e}", exc_info=True)
             # Ultimate fallback: open YouTube search
             try:
-                webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(raw_query)}")
+                open_url_in_browser(f"https://www.youtube.com/results?search_query={quote_plus(raw_query)}")
             except Exception:
                 pass
             return f"Had an issue finding the best match, but I opened YouTube search for '{raw_query}'."
