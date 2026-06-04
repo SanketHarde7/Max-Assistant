@@ -48,8 +48,8 @@ body,
   inset: 0;
   border-radius: 999px;
   z-index: 2;
-  border: 0.5px solid rgba(255, 255, 255, 0.15);
-  transition: border-color 0.4s ease;
+  border: none;
+  transition: background 0.4s ease;
 }
 
 .orb-ring {
@@ -104,11 +104,11 @@ body,
 }
 
 .circle-icon.idle .orb-shell {
-  border-color: rgba(95, 184, 255, 0.3);
+  border: none;
 }
 
 .circle-icon.idle .orb-ring {
-  border: 1.5px solid rgba(45, 125, 210, 0.2);
+  border: none;
   animation: ringPulse 4s ease-in-out infinite;
 }
 
@@ -148,12 +148,12 @@ body,
 }
 
 .circle-icon.listening .orb-shell {
-  border-color: rgba(168, 216, 255, 0.5);
+  border: none;
   animation: shellExpand 1.2s ease-in-out infinite;
 }
 
 .circle-icon.listening .orb-ring {
-  border: 2px solid rgba(58, 155, 255, 0.4);
+  border: none;
   animation: ringExpand 1.5s ease-in-out infinite;
   opacity: 1;
 }
@@ -177,40 +177,40 @@ body,
 .circle-icon.processing {
   background: conic-gradient(
     from 0deg,
-    #b0c4de, #d6e4f0, #eaf2fb, #d6e4f0, #b0c4de
+    #c96a00, #ff9f1c, #ffc56b, #ff9f1c, #c96a00
   );
   box-shadow:
-    0 0 22px rgba(176, 196, 222, 0.5),
-    0 0 45px rgba(200, 220, 245, 0.2),
-    inset 0 0 14px rgba(220, 235, 255, 0.35);
+    0 0 22px rgba(255, 159, 28, 0.7),
+    0 0 45px rgba(255, 159, 28, 0.25),
+    inset 0 0 14px rgba(255, 197, 107, 0.4);
   animation: orbRotate 1.5s linear infinite, processPulse 1.2s ease-in-out infinite;
 }
 
 .circle-icon.processing .orb-core {
-  background: radial-gradient(circle at 35% 35%, #f0f5ff 0%, #c8ddf5 50%, #a8c4e0 100%);
-  box-shadow: 0 0 15px rgba(200, 220, 245, 0.6);
+  background: radial-gradient(circle at 35% 35%, #ffe4b0 0%, #ff9f1c 50%, #c96a00 100%);
+  box-shadow: 0 0 15px rgba(255, 197, 107, 0.7);
   animation: coreProcessPulse 0.6s ease-in-out infinite;
 }
 
 .circle-icon.processing .orb-shell {
-  border-color: rgba(200, 220, 245, 0.3);
+  border: none;
   animation: shellSpin 2s linear infinite;
 }
 
 .circle-icon.processing .orb-ring {
-  border: 1px dashed rgba(176, 196, 222, 0.25);
+  border: none;
   animation: ringSpinReverse 3s linear infinite;
 }
 
 .circle-icon.processing .orb-particles::before {
-  background: #d6e4f0;
-  box-shadow: 0 0 8px #d6e4f0;
+  background: #ffc56b;
+  box-shadow: 0 0 8px #ffc56b;
   animation: particleOrbit1 1.5s linear infinite;
 }
 
 .circle-icon.processing .orb-particles::after {
-  background: #eaf2fb;
-  box-shadow: 0 0 6px #eaf2fb;
+  background: #ffe4b0;
+  box-shadow: 0 0 6px #ffe4b0;
   animation: particleOrbit2 2.5s linear infinite reverse;
 }
 
@@ -237,11 +237,11 @@ body,
 }
 
 .circle-icon.speaking .orb-shell {
-  border-color: rgba(199, 141, 255, 0.4);
+  border: none;
 }
 
 .circle-icon.speaking .orb-ring {
-  border: 1.5px solid rgba(155, 89, 208, 0.3);
+  border: none;
   animation: ringPulse 1.5s ease-in-out infinite;
 }
 
@@ -279,11 +279,11 @@ body,
 }
 
 .circle-icon.error .orb-shell {
-  border-color: rgba(255, 77, 77, 0.5);
+  border: none;
 }
 
 .circle-icon.error .orb-ring {
-  border: 1.5px solid rgba(255, 77, 77, 0.3);
+  border: none;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -308,11 +308,11 @@ body,
 }
 
 .circle-icon.offline .orb-shell {
-  border-color: rgba(150, 150, 150, 0.15);
+  border: none;
 }
 
 .circle-icon.offline .orb-ring {
-  border: 1px solid rgba(100, 100, 100, 0.1);
+  border: none;
 }
 
 .circle-icon.offline .orb-particles::before,
