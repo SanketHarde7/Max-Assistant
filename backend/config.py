@@ -79,16 +79,10 @@ class Config:
 
     # ── TTS Settings ──
     TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-PrabhatNeural")
-    TTS_VOICE_HINDI: str = os.getenv("TTS_VOICE_HINDI", "hi-IN-swaraNeural")
-    # Legacy defaults (kept for backward compatibility)
     TTS_RATE: str = os.getenv("TTS_RATE", "+10%")
     TTS_PITCH: str = os.getenv("TTS_PITCH", "+1Hz")
-    # Language-specific controls
     TTS_RATE_EN: str = os.getenv("TTS_RATE_EN", TTS_RATE)
     TTS_PITCH_EN: str = os.getenv("TTS_PITCH_EN", TTS_PITCH)
-    TTS_RATE_HINDI: str = os.getenv("TTS_RATE_HINDI", "+30%")
-    TTS_PITCH_HINDI: str = os.getenv("TTS_PITCH_HINDI", TTS_PITCH)
-    
 
     # ── AI Models ──
     LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
