@@ -84,23 +84,28 @@ async def transcribe_audio(
             logger.warning(f"Audio payload too small ({len(audio_bytes) if audio_bytes else 0} bytes), skipping STT")
             return ""
 
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+        is_wav = audio_bytes.startswith(b"RIFF")
+        
+        with tempfile.NamedTemporaryFile(suffix=".wav" if is_wav else ".webm", delete=False) as f:
             f.write(audio_bytes)
             tmp_path = f.name
 
-        # Try converting to wav for better compatibility
-        file_to_transcribe = await _convert_webm_to_wav(tmp_path)
-        if file_to_transcribe != tmp_path:
-            wav_path = file_to_transcribe
+        # For WAV files, skip FFmpeg conversion and transcribe directly.
+        if is_wav:
+            file_to_transcribe = tmp_path
+        else:
+            file_to_transcribe = await _convert_webm_to_wav(tmp_path)
+            if file_to_transcribe != tmp_path:
+                wav_path = file_to_transcribe
 
         with open(file_to_transcribe, "rb") as f:
-            audio_bytes = f.read()
+            audio_bytes_read = f.read()
 
         kwargs = {
-            "file": ("audio.wav", audio_bytes, "audio/wav"),
+            "file": ("audio.wav", audio_bytes_read, "audio/wav"),
             "model": model,
             "response_format": "text",
-            "prompt": "Max, Hey Max, please perform the command. Haan, kholo, band karo, pause music, next song, yes, no, open chrome, system shutdown, volume up.",
+            "prompt": "Hey Max, please listen carefully. Open chrome, pause the music, next song, system shutdown, volume up, search for latest news. How are you?",
         }
 
         # Only pass language if explicitly specified
@@ -156,7 +161,7 @@ async def transcribe_file(
             "file": ("audio.wav", audio_bytes, "audio/wav"),
             "model": model,
             "response_format": "text",
-            "prompt": "Max, Hey Max, please perform the command. Haan, kholo, band karo, pause music, next song, yes, no, open chrome, system shutdown, volume up.",
+            "prompt": "Hey Max, please listen carefully. Open chrome, pause the music, next song, system shutdown, volume up, search for latest news. How are you?",
         }
         if language:
             kwargs["language"] = language
@@ -211,7 +216,7 @@ def is_hallucination(transcript: str) -> bool:
         "हाँ", "हां", "अच्छा",
         
         # Change 3: generic audio words
-        "music", "audio", "hello", "the music"
+        "music", "audio", "the music"
     }
     
     return text in hallucinations
@@ -234,7 +239,16 @@ def is_valid_transcript(transcript: str) -> bool:
         known_commands = {
             "pause", "play", "volume", "next", "haan", "nahi", "yes", "no",
             "stop", "cancel", "abort", "mute", "unmute", "kholo", "band",
-            "open", "close", "max", "hello", "hi", "help"
+            "open", "close", "max", "hello", "hi", "help",
+            # App names (single-word voice commands)
+            "browser", "chrome", "firefox", "edge", "spotify", "discord",
+            "calculator", "notepad", "settings", "terminal", "explorer",
+            "whatsapp", "telegram", "slack", "zoom", "teams",
+            # Action words
+            "search", "research", "weather", "screenshot", "timer",
+            "calendar", "reminder", "shutdown", "restart", "lock",
+            "brightness", "previous", "skip", "forward", "rewind",
+            "exit", "quit", "time", "date", "clipboard",
         }
         if word not in known_commands:
             return False
