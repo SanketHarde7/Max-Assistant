@@ -141,8 +141,8 @@ _CAPABILITY_PATTERNS = re.compile(
 )
 
 _NEGATIVE_PATTERNS = re.compile(
-    r"\b(don't|do not|never|please don't|mat karo|nahi karna|band karo|"
-    r"mujhe nahi chahiye|stop)\b",
+    r"\b(don't|do not|never|please don't|mat karo|nahi karna|"
+    r"mujhe nahi chahiye)\b",
     re.IGNORECASE
 )
 
