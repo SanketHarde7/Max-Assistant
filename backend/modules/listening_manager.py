@@ -26,7 +26,7 @@ RESERVED_COMMANDS = {
     "emergency stop", "sunna band karo", "sunna shuru karo"
 }
 
-RISKY_ACTIONS = {"system_shutdown", "system_restart", "quit_max"}
+RISKY_ACTIONS = {"system_shutdown", "system_restart"}
 
 WAKE_WORDS = ["hey max", "hello max", "hi max", "oye max", "ok max", "max"]
 
@@ -82,6 +82,7 @@ class LocalFastBrain:
     @staticmethod
     def route(text: str) -> Tuple[int, Optional[str]]:
         lower = LocalFastBrain.strip_wake_word(text)
+        lower = re.sub(r'[^\w\s]', '', lower).strip()
 
         # Tier 1: Instant media/volume/system
         tier1_map = {
@@ -122,6 +123,17 @@ class LocalFastBrain:
             "quit max": "[SKILL:quit_max]",
             "shutdown max": "[SKILL:quit_max]",
             "exit max": "[SKILL:quit_max]",
+            "quit": "[SKILL:quit_max]",
+            "quit yourself": "[SKILL:quit_max]",
+            "exit": "[SKILL:quit_max]",
+            "close": "[SKILL:quit_max]",
+            "bye max": "[SKILL:quit_max]",
+            "bye": "[SKILL:quit_max]",
+            "goodbye": "[SKILL:quit_max]",
+            "band ho ja": "[SKILL:quit_max]",
+            "band ho jao": "[SKILL:quit_max]",
+            "exit yourself": "[SKILL:quit_max]",
+            "close yourself": "[SKILL:quit_max]",
         }
 
         if lower in tier1_map:
