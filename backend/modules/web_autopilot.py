@@ -210,6 +210,18 @@ NOW WRITE THE COMPLETE RESEARCH DOCUMENT. REMEMBER: AT LEAST 3000 WORDS, ALL 7 C
             if key in clean_query or clean_query in key:
                 return url
 
+        # Layer 2: Sync Domain Corrector (WEB_FALLBACK_MAP)
+        try:
+            from config import config
+            web_map = getattr(config, 'WEB_FALLBACK_MAP', {})
+            if clean_query in web_map:
+                return web_map[clean_query]
+            for key, url in web_map.items():
+                if key in clean_query or clean_query in key:
+                    return url
+        except Exception as e:
+            logger.warning(f"[Sync Layer 2] Domain corrector failed: {e}")
+
         # Layer 3: Synchronous Search Engine Validation API
         try:
             encoded = quote_plus(query)
@@ -225,8 +237,18 @@ NOW WRITE THE COMPLETE RESEARCH DOCUMENT. REMEMBER: AT LEAST 3000 WORDS, ALL 7 C
         except Exception as e:
             logger.warning(f"[Sync Layer 3] Search fallback validation failed: {e}")
 
-        # Last resort cleaner
+        # Last resort cleaner — but don't blindly convert non-web words to domains
+        _NON_WEB_FALLBACK = {
+            "browser", "app", "application", "settings", "system", "desktop",
+            "screen", "window", "folder", "file", "document", "music",
+            "video", "photo", "camera", "store", "help", "search",
+            "terminal", "console", "editor", "player", "recorder",
+            "manager", "monitor", "control", "panel", "tool",
+        }
         fallback = query.replace(" ", "").lower()
+        if fallback in _NON_WEB_FALLBACK:
+            logger.warning(f"[Sync] Refusing to convert '{query}' to a .com domain — it's not a website.")
+            return ""
         if not fallback.startswith(("http://", "https://")):
             fallback = "https://" + fallback + ".com"
         return fallback
