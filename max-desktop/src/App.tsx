@@ -165,6 +165,42 @@ const App: React.FC = () => {
     });
   }, [triggerHibernate]);
 
+  // Expand island UI with typewriter effect and collapse timer
+  const expandIsland = useCallback((text: string) => {
+    if (islandTimerRef.current) { clearTimeout(islandTimerRef.current); islandTimerRef.current = null; }
+    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+
+    const approxChar = 8;
+    const padding = 120;
+    const target = Math.min(680, Math.max(140, Math.floor(text.length * approxChar + padding)));
+    setIslandWidth(target);
+    setIsIslandExpanded(true);
+    setIslandText("");
+
+    const chars = Array.from(text);
+    let idx = 0;
+    const speed = Math.max(8, Math.floor(1000 / Math.min(60, Math.max(20, chars.length))));
+    typewriterRef.current = window.setInterval(() => {
+      idx += 1;
+      setIslandText(chars.slice(0, idx).join(''));
+      if (idx >= chars.length) {
+        if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+        islandTimerRef.current = window.setTimeout(() => {
+          const el = document.querySelector('.island-text');
+          if (el) el.classList.add('fade-out');
+          window.setTimeout(() => {
+            setIsIslandExpanded(false);
+            setIslandText('');
+            setIslandWidth(0);
+            if (el) el.classList.remove('fade-out');
+          }, 220);
+        }, 4500);
+      }
+    }, speed);
+  }, []);
+
+  
+
   const handleBackendMessage = useCallback((msg: BackendMessage) => {
     if (msg.command_id && msg.command_id !== currentCommandIdRef.current) {
       console.log(`[App] Discarding stale backend message for ${msg.command_id}`);
@@ -270,44 +306,6 @@ const App: React.FC = () => {
     }
   }, [showToast, showError, playAudio, triggerHibernate, expandIsland]);
 
-  // Expand island UI with typewriter effect and collapse timer
-  const expandIsland = useCallback((text: string) => {
-    // Clear any existing timers
-    if (islandTimerRef.current) { clearTimeout(islandTimerRef.current); islandTimerRef.current = null; }
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-
-    // Estimate width: base + char * approxWidth
-    const approxChar = 8; // px per char estimate for 14px font
-    const padding = 120; // left/right + orb gap
-    const target = Math.min(680, Math.max(140, Math.floor(text.length * approxChar + padding)));
-    setIslandWidth(target);
-    setIsIslandExpanded(true);
-    setIslandText("");
-
-    // Typewriter: reveal characters gradually
-    const chars = Array.from(text);
-    let idx = 0;
-    const speed = Math.max(8, Math.floor(1000 / Math.min(60, Math.max(20, chars.length))));
-    typewriterRef.current = window.setInterval(() => {
-      idx += 1;
-      setIslandText(chars.slice(0, idx).join(''));
-      if (idx >= chars.length) {
-        if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-        // After finished typing, schedule collapse in 4.5s
-        islandTimerRef.current = window.setTimeout(() => {
-          // fade text then collapse
-          const el = document.querySelector('.island-text');
-          if (el) el.classList.add('fade-out');
-          window.setTimeout(() => {
-            setIsIslandExpanded(false);
-            setIslandText('');
-            setIslandWidth(0);
-            if (el) el.classList.remove('fade-out');
-          }, 220);
-        }, 4500);
-      }
-    }, speed);
-  }, []);
 
   const handleStatusChange = useCallback((status: BackendStatus) => {
     if (status === "connected") {
