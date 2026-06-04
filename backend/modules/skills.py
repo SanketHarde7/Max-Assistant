@@ -354,7 +354,7 @@ class SkillsEngine:
     def _skill_quit_max(self, *args) -> str:
         """Sends hibernate signal to frontend. Rust will handle the actual kill."""
         logger.info("Sending HIBERNATE signal. Handing over kill authority to Rust Tauri.")
-        return "[ACTION:HIBERNATE] I am shutting down completely now. Goodbye!"
+        return "[ACTION:HIBERNATE] I am going to sleep now. Just click my tray icon if you need me!"
 
     # ════════════════════════════════════════════
     # SYSTEM INFO SKILLS
@@ -511,6 +511,7 @@ class SkillsEngine:
                 time.sleep(secs)
                 msg = f"MAX: {label} done! ({secs}s)"
                 try:
+                    # pyrefly: ignore [missing-import]
                     from plyer import notification
                     notification.notify(title="MAX Timer", message=msg, timeout=8)
                     return
@@ -622,10 +623,10 @@ class SkillsEngine:
         "terminal": "wt.exe", "windows terminal": "wt.exe", "powershell": "powershell.exe",
         "explorer": "explorer.exe", "file explorer": "explorer.exe",
         "task manager": "taskmgr.exe", "taskmgr": "taskmgr.exe",
-        "chrome": "start chrome", "google chrome": "start chrome", "firefox": "start firefox",
+        "chrome": "start opera", "google chrome": "start chrome", "firefox": "start firefox",
         "edge": "start msedge", "brave": "start brave", "opera": "start opera",
-        "browser": "start msedge", "default browser": "start msedge",
-        "my browser": "start msedge", "web browser": "start msedge",
+        "browser": "start opera", "default browser": "start opera",
+        "my browser": "start opera", "web browser": "start opera",
         "vscode": "code", "vs code": "code", "visual studio code": "code",
         "word": "start winword", "excel": "start excel", "powerpoint": "start powerpnt",
         "outlook": "start outlook", "vlc": "start vlc", "obs": "start obs64",
