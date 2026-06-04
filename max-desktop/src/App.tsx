@@ -35,6 +35,9 @@ const App: React.FC = () => {
   const [orbState, setOrbState]   = useState<OrbState>("idle");
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
+  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
+  const [islandWidth, setIslandWidth] = useState(0); // px
+  const [islandText, setIslandText] = useState("");
   const [continuousListening, setContinuousListening] = useState(true);
 
   // 🧠 WEB AUTOPILOT REGISTRATION STATE REFS
@@ -49,6 +52,8 @@ const App: React.FC = () => {
   const saveTimerRef     = useRef<number | null>(null);
   const toastTimerRef    = useRef<number | null>(null);
   const errorTimerRef    = useRef<number | null>(null);
+  const islandTimerRef   = useRef<number | null>(null);
+  const typewriterRef    = useRef<number | null>(null);
   const audioRef         = useRef<HTMLAudioElement | null>(null);
   const clickCountRef    = useRef(0);
   const clickTimerRef    = useRef<number | null>(null);
@@ -66,6 +71,8 @@ const App: React.FC = () => {
     } else {
       stop_listening_animation().catch(console.error);
     }
+    // Ensure overlay window stays on top
+    mainWindowRef.current.setAlwaysOnTop(true).catch(() => {});
   }, [orbState]);
 
   const showToast = useCallback((text: string) => {
@@ -209,7 +216,16 @@ const App: React.FC = () => {
             }, 1200);
           }
           const cleanText = msg.text.replace("[ACTION:HIBERNATE]", "").trim();
-          if (cleanText) showToast(cleanText);
+          if (cleanText) {
+            // Decide expansion: if more than one sentence, expand island, else toast only
+            const sentences = cleanText.split(/[.!?]+\s*/).filter(Boolean).length;
+            if (sentences > 1) {
+              // Expand island with full text
+              expandIsland(cleanText);
+            } else {
+              showToast(cleanText);
+            }
+          }
         }
         break;
       case "audio_response":
@@ -252,7 +268,46 @@ const App: React.FC = () => {
       default:
         break;
     }
-  }, [showToast, showError, playAudio, triggerHibernate]);
+  }, [showToast, showError, playAudio, triggerHibernate, expandIsland]);
+
+  // Expand island UI with typewriter effect and collapse timer
+  const expandIsland = useCallback((text: string) => {
+    // Clear any existing timers
+    if (islandTimerRef.current) { clearTimeout(islandTimerRef.current); islandTimerRef.current = null; }
+    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+
+    // Estimate width: base + char * approxWidth
+    const approxChar = 8; // px per char estimate for 14px font
+    const padding = 120; // left/right + orb gap
+    const target = Math.min(680, Math.max(140, Math.floor(text.length * approxChar + padding)));
+    setIslandWidth(target);
+    setIsIslandExpanded(true);
+    setIslandText("");
+
+    // Typewriter: reveal characters gradually
+    const chars = Array.from(text);
+    let idx = 0;
+    const speed = Math.max(8, Math.floor(1000 / Math.min(60, Math.max(20, chars.length))));
+    typewriterRef.current = window.setInterval(() => {
+      idx += 1;
+      setIslandText(chars.slice(0, idx).join(''));
+      if (idx >= chars.length) {
+        if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+        // After finished typing, schedule collapse in 4.5s
+        islandTimerRef.current = window.setTimeout(() => {
+          // fade text then collapse
+          const el = document.querySelector('.island-text');
+          if (el) el.classList.add('fade-out');
+          window.setTimeout(() => {
+            setIsIslandExpanded(false);
+            setIslandText('');
+            setIslandWidth(0);
+            if (el) el.classList.remove('fade-out');
+          }, 220);
+        }, 4500);
+      }
+    }, speed);
+  }, []);
 
   const handleStatusChange = useCallback((status: BackendStatus) => {
     if (status === "connected") {
@@ -506,17 +561,27 @@ const App: React.FC = () => {
 
   return (
     <div className="orb-stage" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div
-        className={`circle-icon ${orbState}`}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        role="button"
-        aria-label="MAX orb"
-      >
-        <div className="orb-core" />
-        <div className="orb-shell" />
-        <div className="orb-ring" />
-        <div className="orb-particles" />
+      <div className="island-wrapper">
+        <div
+          className={`circle-icon ${orbState}`}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          role="button"
+          aria-label="MAX orb"
+        >
+          <div className="orb-core" />
+          <div className="orb-shell" />
+          <div className="orb-ring" />
+          <div className="orb-particles" />
+        </div>
+
+        <div
+          className={`island-panel ${isIslandExpanded ? 'expanded' : ''}`}
+          style={{ width: isIslandExpanded ? `${islandWidth}px` : '0px' }}
+          aria-hidden={!isIslandExpanded}
+        >
+          <div className="island-text">{islandText}</div>
+        </div>
       </div>
 
       {toastText && (
