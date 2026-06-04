@@ -128,10 +128,10 @@ html, body {
 
 /* 2. PROCESSING THEME (Whitish Faint Blue) */
 .theme-processing.gas-top, .theme-processing.gas-bottom {
-  background-image: linear-gradient(90deg, #a8c4e0, #d6e4f0, #eaf2fb, #d6e4f0, #a8c4e0);
+  background-image: linear-gradient(90deg, #7aaed4, #b8d8f0, #e0eef8, #b8d8f0, #7aaed4);
 }
 .theme-processing.gas-left, .theme-processing.gas-right {
-  background-image: linear-gradient(180deg, #a8c4e0, #d6e4f0, #eaf2fb, #d6e4f0, #a8c4e0);
+  background-image: linear-gradient(180deg, #7aaed4, #b8d8f0, #e0eef8, #b8d8f0, #7aaed4);
 }
 
 /* 3. SPEAKING THEME (Deep Purple, Neon Pink, Violet) */
