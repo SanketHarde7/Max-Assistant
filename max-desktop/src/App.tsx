@@ -16,7 +16,8 @@ import { listen }           from "@tauri-apps/api/event";
 import { invoke }           from "@tauri-apps/api/core"; // Rust API import
 import { openUrl }          from "@tauri-apps/plugin-opener";
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
-import { PhysicalPosition } from "@tauri-apps/api/dpi";
+import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useBackend, BackendMessage, BackendStatus } from "./hooks/useBackend";
 import { useVoice }         from "./hooks/useVoice";
 import { start_listening_animation, stop_listening_animation } from "./overlayController";
@@ -26,18 +27,19 @@ const DRAG_THRESHOLD_MS         = 200;
 const POSITION_SAVE_DEBOUNCE_MS = 300;
 const TOAST_DURATION_MS         = 3_000;
 const DBLCLICK_DELAY_MS         = 280;
+const TEXT_WINDOW_LABEL         = "overlay";
+const TEXT_WINDOW_CONTENT_KEY   = "max-text-window-content";
+const TEXT_WINDOW_VISIBLE_KEY   = "max-text-window-visible";
 
 type OrbState = "idle" | "listening" | "processing" | "speaking" | "error" | "offline";
 
 const App: React.FC = () => {
   const mainWindowRef = useRef(getCurrentWindow());
+  const textWindowRef = useRef<WebviewWindow | null>(null);
 
   const [orbState, setOrbState]   = useState<OrbState>("idle");
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
-  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
-  const [islandWidth, setIslandWidth] = useState(0); // px
-  const [islandText, setIslandText] = useState("");
   const [continuousListening, setContinuousListening] = useState(true);
 
   // 🧠 WEB AUTOPILOT REGISTRATION STATE REFS
@@ -98,6 +100,83 @@ const App: React.FC = () => {
       audioRef.current = null;
     }
   }, []);
+
+  const getTextWindow = useCallback(async () => {
+    if (!textWindowRef.current) {
+      textWindowRef.current = await WebviewWindow.getByLabel(TEXT_WINDOW_LABEL);
+    }
+    return textWindowRef.current;
+  }, []);
+
+  const hideTextWindow = useCallback(async () => {
+    localStorage.setItem(TEXT_WINDOW_VISIBLE_KEY, "0");
+    localStorage.removeItem(TEXT_WINDOW_CONTENT_KEY);
+    localStorage.removeItem("max-text-window-position");
+    const textWindow = await getTextWindow();
+    if (!textWindow) return;
+    try {
+      await textWindow.hide();
+    } catch {}
+  }, [getTextWindow]);
+
+  const showTextWindow = useCallback(async (text: string) => {
+    if (islandTimerRef.current) {
+      clearTimeout(islandTimerRef.current);
+      islandTimerRef.current = null;
+    }
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+    }
+
+    const textWindow = await getTextWindow();
+    if (!textWindow) {
+      showToast(text);
+      return;
+    }
+
+    const chars = Array.from(text);
+    let index = 0;
+    const streamText = () => {
+      localStorage.setItem(TEXT_WINDOW_VISIBLE_KEY, "1");
+      localStorage.setItem(TEXT_WINDOW_CONTENT_KEY, chars.slice(0, index).join(""));
+    };
+
+    streamText();
+
+    try {
+      const [position, size] = await Promise.all([
+        mainWindowRef.current.outerPosition(),
+        mainWindowRef.current.outerSize(),
+      ]);
+      const estimatedWidth = Math.max(260, Math.ceil(Math.sqrt(text.length) * 38));
+      const estimatedHeight = Math.max(140, Math.ceil(text.split(/\n+/).length * 34 + text.length * 0.9));
+      localStorage.setItem(
+        "max-text-window-position",
+        JSON.stringify({ x: position.x + size.width + 14, y: position.y })
+      );
+      await textWindow.setAlwaysOnTop(true).catch(() => {});
+      await textWindow.setResizable(true).catch(() => {});
+      await textWindow.setSize(new LogicalSize(estimatedWidth, estimatedHeight)).catch(() => {});
+      await textWindow.setPosition(new PhysicalPosition(position.x + size.width + 14, position.y)).catch(() => {});
+      await textWindow.show().catch(() => {});
+    } catch {}
+
+    const speed = Math.max(10, Math.floor(900 / Math.min(80, Math.max(18, chars.length))));
+    typewriterRef.current = window.setInterval(() => {
+      index += 1;
+      streamText();
+      if (index >= chars.length) {
+        if (typewriterRef.current) {
+          clearInterval(typewriterRef.current);
+          typewriterRef.current = null;
+        }
+        islandTimerRef.current = window.setTimeout(() => {
+          void hideTextWindow();
+        }, Math.max(3500, Math.min(8000, text.length * 55)));
+      }
+    }, speed);
+  }, [getTextWindow, hideTextWindow, showToast]);
 
 
 
@@ -165,42 +244,6 @@ const App: React.FC = () => {
     });
   }, [triggerHibernate]);
 
-  // Expand island UI with typewriter effect and collapse timer
-  const expandIsland = useCallback((text: string) => {
-    if (islandTimerRef.current) { clearTimeout(islandTimerRef.current); islandTimerRef.current = null; }
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-
-    const approxChar = 8;
-    const padding = 120;
-    const target = Math.min(680, Math.max(140, Math.floor(text.length * approxChar + padding)));
-    setIslandWidth(target);
-    setIsIslandExpanded(true);
-    setIslandText("");
-
-    const chars = Array.from(text);
-    let idx = 0;
-    const speed = Math.max(8, Math.floor(1000 / Math.min(60, Math.max(20, chars.length))));
-    typewriterRef.current = window.setInterval(() => {
-      idx += 1;
-      setIslandText(chars.slice(0, idx).join(''));
-      if (idx >= chars.length) {
-        if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-        islandTimerRef.current = window.setTimeout(() => {
-          const el = document.querySelector('.island-text');
-          if (el) el.classList.add('fade-out');
-          window.setTimeout(() => {
-            setIsIslandExpanded(false);
-            setIslandText('');
-            setIslandWidth(0);
-            if (el) el.classList.remove('fade-out');
-          }, 220);
-        }, 4500);
-      }
-    }, speed);
-  }, []);
-
-  
-
   const handleBackendMessage = useCallback((msg: BackendMessage) => {
     if (msg.command_id && msg.command_id !== currentCommandIdRef.current) {
       console.log(`[App] Discarding stale backend message for ${msg.command_id}`);
@@ -256,8 +299,7 @@ const App: React.FC = () => {
             // Decide expansion: if more than one sentence, expand island, else toast only
             const sentences = cleanText.split(/[.!?]+\s*/).filter(Boolean).length;
             if (sentences > 1) {
-              // Expand island with full text
-              expandIsland(cleanText);
+              void showTextWindow(cleanText);
             } else {
               showToast(cleanText);
             }
@@ -304,7 +346,7 @@ const App: React.FC = () => {
       default:
         break;
     }
-  }, [showToast, showError, playAudio, triggerHibernate, expandIsland]);
+  }, [showToast, showError, playAudio, triggerHibernate, showTextWindow]);
 
 
   const handleStatusChange = useCallback((status: BackendStatus) => {
@@ -558,28 +600,18 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="orb-stage" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div className="island-wrapper">
-        <div
-          className={`circle-icon ${orbState}`}
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          role="button"
-          aria-label="MAX orb"
-        >
-          <div className="orb-core" />
-          <div className="orb-shell" />
-          <div className="orb-ring" />
-          <div className="orb-particles" />
-        </div>
-
-        <div
-          className={`island-panel ${isIslandExpanded ? 'expanded' : ''}`}
-          style={{ width: isIslandExpanded ? `${islandWidth}px` : '0px' }}
-          aria-hidden={!isIslandExpanded}
-        >
-          <div className="island-text">{islandText}</div>
-        </div>
+    <div className="orb-stage">
+      <div
+        className={`circle-icon ${orbState}`}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        role="button"
+        aria-label="MAX orb"
+      >
+        <div className="orb-core" />
+        <div className="orb-shell" />
+        <div className="orb-ring" />
+        <div className="orb-particles" />
       </div>
 
       {toastText && (
