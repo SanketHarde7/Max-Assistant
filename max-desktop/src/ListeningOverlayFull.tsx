@@ -38,26 +38,17 @@ export const ListeningOverlayFull: React.FC = () => {
       
       {/* 1. LISTENING THEME (Blue / Cyan Family) */}
       <div className={`theme-layer ${overlayState === "listening" ? "active" : ""}`}>
-        <div className="gas-edge gas-top theme-listening" />
         <div className="gas-edge gas-bottom theme-listening" />
-        <div className="gas-edge gas-left theme-listening" />
-        <div className="gas-edge gas-right theme-listening" />
       </div>
 
       {/* 2. PROCESSING THEME (Orange / Warm Amber Family) */}
       <div className={`theme-layer ${overlayState === "processing" ? "active" : ""}`}>
-        <div className="gas-edge gas-top theme-processing" />
         <div className="gas-edge gas-bottom theme-processing" />
-        <div className="gas-edge gas-left theme-processing" />
-        <div className="gas-edge gas-right theme-processing" />
       </div>
 
       {/* 3. SPEAKING THEME (Purple / Pink / Violet Family) */}
       <div className={`theme-layer ${overlayState === "speaking" ? "active" : ""}`}>
-        <div className="gas-edge gas-top theme-speaking" />
         <div className="gas-edge gas-bottom theme-speaking" />
-        <div className="gas-edge gas-left theme-speaking" />
-        <div className="gas-edge gas-right theme-speaking" />
       </div>
       
       <div className="ambient-screen-glow" />
