@@ -15,6 +15,7 @@ html, body {
   pointer-events: none;
   z-index: 9999;
   overflow: hidden; 
+  border-radius: 12px;
 }
 
 /* CROSSFADE LOGIC: Smooth transition between colors */
@@ -37,7 +38,7 @@ html, body {
   /* Blur adjusted for 10px thickness to keep it looking like gas but rich in color */
   filter: blur(5px);
   opacity: 0;
-  transition: opacity 0.5s ease, transform 0.8s cubic-bezier(0.2, 0.65, 0.2, 1);
+  transition: opacity 0.8s ease, transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: opacity, transform;
 }
 
@@ -82,7 +83,7 @@ html, body {
   right: -5%;
   height: 10px; /* 20px - 10px = 10px */
   background-size: 200% 100%;
-  animation: gasFlowHorizontal 4s linear infinite, gasPulse 3s ease-in-out infinite alternate;
+  animation: gasFlowHorizontal 8s linear infinite, gasPulse 6s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
 }
 
 /* BOTTOM EDGE */
@@ -92,7 +93,7 @@ html, body {
   right: -5%;
   height: 10px; /* 20px - 10px = 10px */
   background-size: 200% 100%;
-  animation: gasFlowHorizontal 5s linear infinite, gasPulse 3.5s ease-in-out infinite alternate;
+  animation: gasFlowHorizontal 10s linear infinite, gasPulse 7s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
 }
 
 /* LEFT EDGE */
@@ -102,7 +103,7 @@ html, body {
   left: 0px;
   width: 10px; /* 20px - 10px = 10px */
   background-size: 100% 200%;
-  animation: gasFlowVertical 4.5s linear infinite, gasPulse 3.2s ease-in-out infinite alternate;
+  animation: gasFlowVertical 9s linear infinite, gasPulse 6.4s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
 }
 
 /* RIGHT EDGE */
@@ -112,7 +113,7 @@ html, body {
   right: 0px;
   width: 10px; /* 20px - 10px = 10px */
   background-size: 100% 200%;
-  animation: gasFlowVertical 4.2s linear infinite, gasPulse 3.8s ease-in-out infinite alternate;
+  animation: gasFlowVertical 8.4s linear infinite, gasPulse 7.6s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
 }
 
 /* ════════════ THEME GRADIENT COLORS (Deep & Dark) ════════════ */
@@ -125,12 +126,12 @@ html, body {
   background-image: linear-gradient(180deg, #0d47a1, #00e5ff, #651fff, #00e5ff, #0d47a1);
 }
 
-/* 2. PROCESSING THEME (Deep Orange, Warm Amber, Red) */
+/* 2. PROCESSING THEME (Whitish Faint Blue) */
 .theme-processing.gas-top, .theme-processing.gas-bottom {
-  background-image: linear-gradient(90deg, #e65100, #ffb300, #dd2c00, #ffb300, #e65100);
+  background-image: linear-gradient(90deg, #a8c4e0, #d6e4f0, #eaf2fb, #d6e4f0, #a8c4e0);
 }
 .theme-processing.gas-left, .theme-processing.gas-right {
-  background-image: linear-gradient(180deg, #e65100, #ffb300, #dd2c00, #ffb300, #e65100);
+  background-image: linear-gradient(180deg, #a8c4e0, #d6e4f0, #eaf2fb, #d6e4f0, #a8c4e0);
 }
 
 /* 3. SPEAKING THEME (Deep Purple, Neon Pink, Violet) */
