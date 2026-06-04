@@ -65,7 +65,6 @@ class MemoryManager:
             "personality_profile": {
                 "prefers_short_answers": False,
                 "main_domain": "coding",
-                "language_mix": 0.7,
                 "humor_level": "medium",
                 "total_interactions": 0,
                 "last_greeting": ""
@@ -125,8 +124,8 @@ class MemoryManager:
             if len(messages) <= self.summarize_threshold:
                 return True
             
-            kept_messages = messages[:2] + messages[-10:]
-            middle_messages = messages[2:-10]
+            kept_messages = messages[:2] + messages[-30:]
+            middle_messages = messages[2:-30]
             
             summary_parts = [
                 f"[{m['role']}] {m['content'][:100]}..." 
@@ -169,9 +168,7 @@ class MemoryManager:
             domain = profile.get("main_domain")
             if domain:
                 parts.append(f"User mainly asks about: {domain}")
-            lang_mix = profile.get("language_mix")
-            if lang_mix is not None:
-                parts.append(f"Language preference: {lang_mix * 100:.0f}% English, {100 - lang_mix * 100:.0f}% Hindi")
+
             if parts:
                 context_parts.append("PERSONALITY PROFILE:\n" + "\n".join(parts))
         
