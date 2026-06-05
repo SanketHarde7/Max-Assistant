@@ -15,7 +15,7 @@ import logging
 import re
 from typing import Dict, Any, Optional
 from config import config
-from modules.llm import get_response, get_response_with_skill_result, get_greeting
+from modules.llm import get_response, get_response_with_skill_result, get_greeting, get_acknowledgment
 from modules.skills import get_skills_engine
 from modules.memory import get_memory_manager
 from modules.tts import generate_tts
@@ -101,7 +101,7 @@ class MaxAgent:
                     final_response = f"Could not execute. Error: {error}"
                 tts_path = ""
                 if use_tts and final_response:
-                    tts_path = await generate_tts(self.gatekeeper.filter_for_tts(final_response, max_chars=300))
+                    tts_path = await generate_tts(self.gatekeeper.filter_for_tts(final_response))
                 return {"response": final_response, "tts_path": tts_path, "skill_used": skill_tag, "intent": "fast_brain"}
 
             text = resolved_text
@@ -135,6 +135,36 @@ class MaxAgent:
             intent = await self.intent_engine.classify(text)
             allow_skills = intent.should_execute_skill
             logger.info(f"Intent: {intent.type.value} | allow_skills={allow_skills} | reason='{intent.reason}'")
+
+            # ── Fast Pre-call Acknowledgment ───────────────
+            ack = await get_acknowledgment(text)
+            if ack:
+                try:
+                    import base64
+                    import os
+                    import main
+                    if main.active_websocket:
+                        # send text
+                        await main.active_websocket.send_json({
+                            "event": "response_text",
+                            "text": ack,
+                            "skill_used": None,
+                        })
+                        if use_tts:
+                            ack_tts_path = await generate_tts(ack)
+                            if ack_tts_path and os.path.exists(ack_tts_path):
+                                with open(ack_tts_path, "rb") as f:
+                                    encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                                    await main.active_websocket.send_json({
+                                        "event": "audio_response",
+                                        "audio": encoded_audio,
+                                    })
+                                try:
+                                    os.remove(ack_tts_path)
+                                except Exception:
+                                    pass
+                except Exception as e:
+                    logger.error(f"Ack dispatch failed: {e}")
 
             # ── LLM call ──────────────────────────────────
             result       = await get_response(text, combined_context, allow_skills=allow_skills)
@@ -200,7 +230,7 @@ class MaxAgent:
             # ── TTS ───────────────────────────────────────
             tts_path = ""
             if use_tts and filtered:
-                tts_text = self.gatekeeper.filter_for_tts(filtered, max_chars=300)
+                tts_text = self.gatekeeper.filter_for_tts(filtered)
                 tts_path = await generate_tts(tts_text)
 
             return {
