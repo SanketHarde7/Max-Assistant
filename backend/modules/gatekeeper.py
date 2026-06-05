@@ -156,7 +156,7 @@ class ResponseGatekeeper:
             logger.debug(f"Gatekeeper: '{text[:70]}' → '{result[:70]}'")
         return result
 
-    def filter_for_tts(self, text: str, max_chars: int = 300) -> str:
+    def filter_for_tts(self, text: str, max_chars: int = 3000) -> str:
         """Aggressive filter for TTS — strips emojis, markdown, trims to sentence boundary."""
         result = self.filter(text)
         result = _strip_urls_for_tts(result)
