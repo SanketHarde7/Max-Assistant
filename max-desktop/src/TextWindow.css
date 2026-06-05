@@ -6,6 +6,7 @@
   justify-content: flex-start;
   padding: 14px;
   box-sizing: border-box;
+  pointer-events: auto;
 }
 
 .text-window-panel {
@@ -18,12 +19,18 @@
   max-height: none;
   padding: 16px 18px;
   border-radius: 24px;
-  background: rgba(16, 17, 20, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px) saturate(130%);
+  background: rgba(16, 17, 20, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(130%);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.6),
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+    0 -1px 0 0 rgba(255, 255, 255, 0.10) inset;
   color: #f4f7fb;
+  position: relative;
+  animation: textWindowEnter 180ms ease-out both;
 }
 
 .text-window-title {
@@ -31,6 +38,8 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(244, 247, 251, 0.55);
+  display: flex;
+  align-items: center;
 }
 
 .text-window-text {
@@ -41,4 +50,114 @@
   font-size: 15px;
   line-height: 1.55;
   color: #f7f9fc;
+  /* Allow vertical scrolling when content exceeds window size */
+  overflow-y: auto;
+  max-height: calc(100vh - 96px);
+  padding-bottom: 6px;
+  padding-right: 4px;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* ── Custom Scrollbar — Fully Clickable ── */
+.text-window-text::-webkit-scrollbar {
+  width: 10px;
+  cursor: pointer;
+}
+
+.text-window-text::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.text-window-text::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.30);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  cursor: pointer;
+  min-height: 30px;
+}
+
+.text-window-text::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.50);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  cursor: pointer;
+}
+
+.text-window-text::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.60);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  cursor: pointer;
+}
+
+.text-window-text::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+}
+
+.text-window-text {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+/* Scroll container wrapper */
+.text-window-scroll-wrap {
+  position: relative;
+  pointer-events: auto;
+}
+
+/* Shadows that hint at more content */
+.scroll-shadow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  pointer-events: none;
+  z-index: 4;
+}
+.scroll-shadow.top {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.52), rgba(0, 0, 0, 0));
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+.scroll-shadow.bottom {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.52), rgba(0, 0, 0, 0));
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
+/* Pin button */
+.text-window-pin {
+  margin-left: 10px;
+  background: transparent;
+  border: none;
+  color: rgba(244, 247, 251, 0.85);
+  cursor: pointer;
+  font-size: 14px;
+  pointer-events: auto;
+}
+.text-window-pin:hover {
+  color: #ffd36b;
+}
+.text-window-pin.pinned {
+  color: #ffd36b;
+}
+
+@keyframes textWindowEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
