@@ -40,6 +40,17 @@
         "skipTaskbar": true,
         "visible": false,
         "shadow": false
+      },
+      {
+        "label": "listening",
+        "title": "",
+        "fullscreen": true,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "shadow": false
       }
     ],
     "security": {
