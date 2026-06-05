@@ -1138,7 +1138,7 @@ class SkillsEngine:
                         # Also generate and stream TTS for the text
                         from modules.tts import generate_tts
                         import base64, os
-                        tts_path = await generate_tts(text[:300])
+                        tts_path = await generate_tts(text[:3000])
                         if tts_path and os.path.exists(tts_path):
                             with open(tts_path, "rb") as f:
                                 encoded = base64.b64encode(f.read()).decode("utf-8")
