@@ -234,6 +234,9 @@ fn hibernate_backend(app_handle: tauri::AppHandle) {
     if let Some(window) = app_handle.get_webview_window("overlay") {
         let _ = window.hide();
     }
+    if let Some(window) = app_handle.get_webview_window("listening") {
+        let _ = window.hide();
+    }
 }
 
 #[tauri::command]
@@ -248,7 +251,7 @@ fn exit_app(app_handle: tauri::AppHandle) {
 #[tauri::command]
 fn start_listening_animation(app_handle: tauri::AppHandle) {
     use tauri::Manager;
-    if let Some(window) = app_handle.get_webview_window("overlay") {
+    if let Some(window) = app_handle.get_webview_window("listening") {
         let _ = window.set_ignore_cursor_events(true);
         let _ = window.show();
     }
@@ -257,7 +260,7 @@ fn start_listening_animation(app_handle: tauri::AppHandle) {
 #[tauri::command]
 fn stop_listening_animation(app_handle: tauri::AppHandle) {
     use tauri::Manager;
-    if let Some(window) = app_handle.get_webview_window("overlay") {
+    if let Some(window) = app_handle.get_webview_window("listening") {
         let _ = window.hide();
     }
 }
