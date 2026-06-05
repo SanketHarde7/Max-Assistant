@@ -405,21 +405,32 @@ async def process_voice_request(
         })
         
         tts_path = result.get("tts_path", "")
+        logger.info(f"Voice TTS path: '{tts_path}', exists: {bool(tts_path and os.path.exists(tts_path))}")
         if tts_path and os.path.exists(tts_path):
             try:
+                file_size = os.path.getsize(tts_path)
+                logger.info(f"Voice TTS file size: {file_size} bytes")
                 with open(tts_path, "rb") as f:
-                    encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                    audio_bytes = f.read()
+                    encoded_audio = base64.b64encode(audio_bytes).decode('utf-8')
+                    logger.info(f"Voice TTS encoded audio length: {len(encoded_audio)} chars")
                     if connection_state["current_request_id"] == rid:
                         await websocket.send_json({
                             "event": "audio_response",
                             "audio": encoded_audio,
                             "command_id": rid
                         })
+                # Clean up temp TTS file
+                try:
+                    os.remove(tts_path)
+                except Exception:
+                    pass
             except Exception as e:
-                logger.error(f"Voice TTS Read Error: {e}")
+                logger.error(f"Voice TTS Read Error: {e}", exc_info=True)
                 if connection_state["current_request_id"] == rid:
                     await websocket.send_json({"event": "audio_response", "command_id": rid})
         else:
+            logger.warning(f"Voice TTS MISSING — No audio will be sent for rid={rid}")
             if connection_state["current_request_id"] == rid:
                 await websocket.send_json({"event": "audio_response", "command_id": rid})
     except asyncio.CancelledError:
@@ -475,7 +486,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "event": "greeting",
                         "text": greeting
                     })
-                    tts_path = await generate_tts(greeting[:300])
+                    tts_path = await generate_tts(greeting[:3000])
                     if tts_path and os.path.exists(tts_path):
                         try:
                             with open(tts_path, "rb") as f:
@@ -556,18 +567,29 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
 
                     tts_path = result.get("tts_path", "")
+                    logger.info(f"Text TTS path: '{tts_path}', exists: {bool(tts_path and os.path.exists(tts_path))}")
                     if tts_path and os.path.exists(tts_path):
                         try:
+                            file_size = os.path.getsize(tts_path)
+                            logger.info(f"Text TTS file size: {file_size} bytes")
                             with open(tts_path, "rb") as f:
-                                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+                                audio_bytes = f.read()
+                                encoded_audio = base64.b64encode(audio_bytes).decode('utf-8')
+                                logger.info(f"Text TTS encoded audio length: {len(encoded_audio)} chars")
                                 await websocket.send_json({
                                     "event": "audio_response",
                                     "audio": encoded_audio,
                                 })
+                            # Clean up temp TTS file
+                            try:
+                                os.remove(tts_path)
+                            except Exception:
+                                pass
                         except Exception as e:
-                            logger.error(f"Text TTS Read Error: {e}")
+                            logger.error(f"Text TTS Read Error: {e}", exc_info=True)
                             await websocket.send_json({"event": "audio_response"})
                     else:
+                        logger.warning(f"Text TTS MISSING — No audio will be sent")
                         await websocket.send_json({"event": "audio_response"})
 
                 elif msg_type == "voice" or msg_type == "audio":
@@ -625,7 +647,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         })
                         
                         # Trigger TTS so MAX speaks the analysis aloud
-                        tts_path = await generate_tts(vision_response[:300])
+                        tts_path = await generate_tts(vision_response[:3000])
                         if tts_path and os.path.exists(tts_path):
                             with open(tts_path, "rb") as f:
                                 encoded_audio = base64.b64encode(f.read()).decode('utf-8')
@@ -731,7 +753,7 @@ async def health_check():
 
 @app.post("/api/speak")
 async def speak(request: TextInput):
-    tts_path = await generate_tts(request.text[:300])
+    tts_path = await generate_tts(request.text[:3000])
     if tts_path and os.path.exists(tts_path):
         with open(tts_path, "rb") as f:
             return {"audio": base64.b64encode(f.read()).decode('utf-8'), "text": request.text}
