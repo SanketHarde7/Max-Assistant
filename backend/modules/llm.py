@@ -350,6 +350,35 @@ Don't start with "I". Don't say "The result shows..." — just say what happened
 """
 
 
+async def get_acknowledgment(user_text: str) -> str:
+    """
+    Fast pre-call intent classifier. Returns 'Got it.', 'Let me think...', or ''.
+    """
+    try:
+        system_prompt = "You are an intent classifier. Given a user message, reply with ONLY one of these three outputs — nothing else, no explanation, no punctuation variation: 'Got it.' OR 'Let me think...' OR '' (empty string). Rules: If the message is an action command (open, play, close, set, send, turn, lock, shutdown, restart, volume, brightness, remind, note, search for something quick) → reply 'Got it.' If the message is a complex question, research, explanation request, or anything needing reasoning (what is, how does, why, explain, difference between, tell me about, research) → reply 'Let me think...' If the message is casual conversation, greeting, or small talk (hi, hello, how are you, thanks, good night) → reply with empty string only."
+        
+        async def call():
+            client = get_client()
+            return await client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_text.strip()}
+                ],
+                temperature=0.3,
+                max_tokens=15,
+            )
+            
+        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=5.0)
+        output = resp.choices[0].message.content.strip()
+        if output in ["Got it.", "Let me think..."]:
+            return output
+        return ""
+    except Exception:
+        return ""
+
+
+
 async def get_greeting() -> str:
     return "Max is here."
 
