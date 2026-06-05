@@ -20,6 +20,13 @@ body,
   padding-left: 0;
 }
 
+.orb-stage.orb-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
 /* ═══════════════════════════════════════════════════
    ORB CONTAINER
    ═══════════════════════════════════════════════════ */
