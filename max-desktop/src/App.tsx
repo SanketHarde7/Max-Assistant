@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [toastText, setToastText] = useState("");
   const [errorMsg,  setErrorMsg]  = useState("");
   const [continuousListening, setContinuousListening] = useState(true);
+  const [isOrbHidden, setIsOrbHidden] = useState(false);
 
   // 🧠 WEB AUTOPILOT REGISTRATION STATE REFS
   const lastResearchFileRef = useRef<string | null>(null);
@@ -56,6 +57,8 @@ const App: React.FC = () => {
   const errorTimerRef    = useRef<number | null>(null);
   const islandTimerRef   = useRef<number | null>(null);
   const typewriterRef    = useRef<number | null>(null);
+  const pendingHideRef   = useRef(false);
+  const writingCompleteRef = useRef(false);
   const audioRef         = useRef<HTMLAudioElement | null>(null);
   const clickCountRef    = useRef(0);
   const clickTimerRef    = useRef<number | null>(null);
@@ -68,6 +71,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const activeStates = ["listening", "processing", "speaking"];
     localStorage.setItem("max-overlay-state", orbState);
+    setIsOrbHidden(localStorage.getItem("max-orb-hidden") === "1");
     if (activeStates.includes(orbState)) {
       start_listening_animation().catch(console.error);
     } else {
@@ -108,14 +112,38 @@ const App: React.FC = () => {
     return textWindowRef.current;
   }, []);
 
-  const hideTextWindow = useCallback(async () => {
+  const hideTextWindow = useCallback(async (force: boolean = false) => {
+    const pinned = localStorage.getItem('max-text-window-pinned') === '1';
+    if (!force && pinned) {
+      // Don't hide when pinned
+      return;
+    }
+    localStorage.setItem("max-orb-hidden", "0");
+    setIsOrbHidden(false);
     localStorage.setItem(TEXT_WINDOW_VISIBLE_KEY, "0");
     localStorage.removeItem(TEXT_WINDOW_CONTENT_KEY);
     localStorage.removeItem("max-text-window-position");
+    // If writing is in progress and not forced, defer hide
+    if (!force && typewriterRef.current) {
+      pendingHideRef.current = true;
+      return;
+    }
+
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+    }
+    if (islandTimerRef.current) {
+      clearTimeout(islandTimerRef.current);
+      islandTimerRef.current = null;
+    }
+
     const textWindow = await getTextWindow();
     if (!textWindow) return;
     try {
       await textWindow.hide();
+      pendingHideRef.current = false;
+      writingCompleteRef.current = false;
     } catch {}
   }, [getTextWindow]);
 
@@ -129,53 +157,63 @@ const App: React.FC = () => {
       typewriterRef.current = null;
     }
 
+    // reset flags
+    pendingHideRef.current = false;
+    writingCompleteRef.current = false;
+    localStorage.setItem("max-orb-hidden", "1");
+    setIsOrbHidden(true);
+
     const textWindow = await getTextWindow();
     if (!textWindow) {
       showToast(text);
       return;
     }
 
-    const chars = Array.from(text);
-    let index = 0;
-    const streamText = () => {
-      localStorage.setItem(TEXT_WINDOW_VISIBLE_KEY, "1");
-      localStorage.setItem(TEXT_WINDOW_CONTENT_KEY, chars.slice(0, index).join(""));
-    };
-
-    streamText();
-
     try {
       const [position, size] = await Promise.all([
         mainWindowRef.current.outerPosition(),
         mainWindowRef.current.outerSize(),
       ]);
-      const estimatedWidth = Math.max(260, Math.ceil(Math.sqrt(text.length) * 38));
-      const estimatedHeight = Math.max(140, Math.ceil(text.split(/\n+/).length * 34 + text.length * 0.9));
+      // Prioritize vertical growth (approx 60% vertical / 40% horizontal)
+      const totalChars = Math.max(1, text.length);
+      const preferredWidth = Math.ceil(Math.min(720, Math.max(260, Math.sqrt(totalChars) * 28)));
+      const approxCharWidth = 8; // px
+      const charsPerLine = Math.max(18, Math.floor(preferredWidth / approxCharWidth));
+      const lines = Math.max(1, Math.ceil(totalChars / charsPerLine));
+      const estimatedWidth = Math.max(260, Math.min(900, preferredWidth));
+      const estimatedHeight = Math.max(140, Math.min(1200, 80 + lines * 30));
+
+      // save anchor position closer to orb (smaller gap)
+      const desiredX = position.x + size.width + 6;
       localStorage.setItem(
         "max-text-window-position",
-        JSON.stringify({ x: position.x + size.width + 14, y: position.y })
+        JSON.stringify({ x: desiredX, y: position.y })
       );
-      await textWindow.setAlwaysOnTop(true).catch(() => {});
-      await textWindow.setResizable(true).catch(() => {});
-      await textWindow.setSize(new LogicalSize(estimatedWidth, estimatedHeight)).catch(() => {});
-      await textWindow.setPosition(new PhysicalPosition(position.x + size.width + 14, position.y)).catch(() => {});
-      await textWindow.show().catch(() => {});
+      const textWindow = await getTextWindow();
+      if (textWindow) {
+        await textWindow.setAlwaysOnTop(true).catch(() => {});
+        await textWindow.setResizable(true).catch(() => {});
+        await textWindow.setSize(new LogicalSize(estimatedWidth, estimatedHeight)).catch(() => {});
+        await textWindow.setPosition(new PhysicalPosition(desiredX, position.y)).catch(() => {});
+        await textWindow.show().catch(() => {});
+      }
     } catch {}
 
-    const speed = Math.max(10, Math.floor(900 / Math.min(80, Math.max(18, chars.length))));
-    typewriterRef.current = window.setInterval(() => {
-      index += 1;
-      streamText();
-      if (index >= chars.length) {
-        if (typewriterRef.current) {
-          clearInterval(typewriterRef.current);
-          typewriterRef.current = null;
-        }
-        islandTimerRef.current = window.setTimeout(() => {
-          void hideTextWindow();
-        }, Math.max(3500, Math.min(8000, text.length * 55)));
-      }
-    }, speed);
+    // Set the full text immediately to avoid Chromium background timer throttling
+    localStorage.setItem(TEXT_WINDOW_VISIBLE_KEY, "1");
+    localStorage.setItem(TEXT_WINDOW_CONTENT_KEY, text);
+    writingCompleteRef.current = true;
+
+    // Set auto-hide timer based on text length
+    const closeDelay = Math.min(20000, Math.max(2500, text.length * 120));
+    islandTimerRef.current = window.setTimeout(() => {
+      void hideTextWindow();
+    }, closeDelay);
+
+    // If a hide was requested already, honor it
+    if (pendingHideRef.current) {
+      void hideTextWindow(true);
+    }
   }, [getTextWindow, hideTextWindow, showToast]);
 
 
@@ -278,6 +316,10 @@ const App: React.FC = () => {
         }
         break;
       case "response_text":
+        if (msg.command_id && currentCommandIdRef.current && msg.command_id !== currentCommandIdRef.current) {
+          console.log(`Ignoring stale response_text for ${msg.command_id}`);
+          break;
+        }
         if (ignoreResponseRef.current) {
           break;
         }
@@ -307,12 +349,26 @@ const App: React.FC = () => {
         }
         break;
       case "audio_response":
+        if (msg.command_id && currentCommandIdRef.current && msg.command_id !== currentCommandIdRef.current) {
+          console.log(`Ignoring stale audio_response for ${msg.command_id}`);
+          break;
+        }
         if (ignoreResponseRef.current) {
           ignoreResponseRef.current = false; // Reset
           setOrbState("idle");
           break;
         }
         if (msg.audio) {
+          if (typewriterRef.current) {
+            clearInterval(typewriterRef.current);
+            typewriterRef.current = null;
+          }
+          if (islandTimerRef.current) {
+            clearTimeout(islandTimerRef.current);
+            islandTimerRef.current = null;
+          }
+          pendingHideRef.current = false;
+          writingCompleteRef.current = true;
           if (hibernateTimerRef.current) {
             clearTimeout(hibernateTimerRef.current);
             hibernateTimerRef.current = null;
@@ -333,6 +389,13 @@ const App: React.FC = () => {
           playAudio(msg.audio, shouldHibernateRef.current, isHealth);
           shouldHibernateRef.current = false; 
         } else {
+          if (typewriterRef.current) {
+            clearInterval(typewriterRef.current);
+            typewriterRef.current = null;
+          }
+          // Do not clear islandTimerRef here, let it fire naturally to auto-hide the window
+          pendingHideRef.current = false;
+          writingCompleteRef.current = true;
           setOrbState("idle");
           if (shouldHibernateRef.current) {
             void triggerHibernate("no-audio");
@@ -367,11 +430,12 @@ const App: React.FC = () => {
     } catch (err) {
       console.warn("Backend /api/stop unreachable:", err);
     }
+    void hideTextWindow(true);
     send({ type: "abort", command_id: currentCommandIdRef.current });
     stopSpeaking();
     setOrbState("idle");
     showToast("🛑 Terminated");
-  }, [stopSpeaking, showToast, send]);
+  }, [stopSpeaking, showToast, send, hideTextWindow]);
 
   // Smart interception loop for conversational follow-ups (Yes/No handling)
   const handleVoiceCommandInterpretation = (userText: string): boolean => {
@@ -413,12 +477,13 @@ const App: React.FC = () => {
       return;
     }
     console.log("[App] VAD Speech started. Interrupting playback...");
+    void hideTextWindow(true);
     stopSpeaking();
     if (currentCommandIdRef.current) {
       send({ type: "abort", command_id: currentCommandIdRef.current });
     }
     setOrbState("listening");
-  }, [send, stopSpeaking]);
+  }, [send, stopSpeaking, hideTextWindow]);
 
   const handleAudioReady = useCallback((base64: string) => {
     lastSpeechEndRef.current = Date.now();
@@ -600,7 +665,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="orb-stage">
+    <div className={`orb-stage ${isOrbHidden ? "orb-hidden" : ""}`}>
       <div
         className={`circle-icon ${orbState}`}
         onPointerDown={handlePointerDown}
