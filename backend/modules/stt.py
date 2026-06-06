@@ -245,7 +245,7 @@ def is_valid_transcript(transcript: str) -> bool:
             "calculator", "notepad", "settings", "terminal", "explorer",
             "whatsapp", "telegram", "slack", "zoom", "teams",
             # Action words
-            "search", "research", "weather", "screenshot", "timer",
+            "search", "research", "weather", "screenshot", "timer", "record", "recording", "link",
             "calendar", "reminder", "shutdown", "restart", "lock",
             "brightness", "previous", "skip", "forward", "rewind",
             "exit", "quit", "time", "date", "clipboard",
