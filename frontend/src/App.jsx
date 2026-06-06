@@ -428,12 +428,19 @@ function App() {
         continuousListening={continuousListening}
       />
 
-      {/* 3D Scene — Full Screen Canvas */}
+      {/* 3D Scene — Smooth transitioning Canvas with zoom and shift */}
       <div
         style={{
           position: 'absolute',
-          inset: 0,
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: chatOpen ? '380px' : '0px',
           zIndex: 1,
+          transform: chatOpen ? 'scale(0.88) translateX(-15px)' : 'scale(1) translateX(0px)',
+          transformOrigin: 'center left',
+          filter: chatOpen ? 'brightness(0.88)' : 'brightness(1)',
+          transition: 'right 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.5s ease-in-out',
         }}
       >
         <Canvas
