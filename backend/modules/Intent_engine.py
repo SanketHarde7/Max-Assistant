@@ -87,6 +87,10 @@ COMMAND — User wants an action performed RIGHT NOW.
   ✓ "deep research karo AI pe"
   ✓ "find data about climate change"
   ✓ "investigate blockchain technology"
+  ✓ "open the copied link"
+  ✓ "clipboard me jo link hai use open karo"
+  ✓ "screen pe jo link hai open karo"
+  ✓ "open the link inside main.py"
 
 CAPABILITY_QUESTION — User asks if the assistant CAN or IS ABLE TO do something. No action should be taken.
   ✓ "can you play YouTube videos?"
