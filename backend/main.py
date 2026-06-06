@@ -595,13 +595,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif msg_type == "voice" or msg_type == "audio":
                     rid = msg.get("command_id") or msg.get("rid") or uuid.uuid4().hex
                     
+                    # Store this command ID as the pending one
+                    connection_state["current_request_id"] = rid
+                    
+                    # Wait 300ms to debounce rapid-fire commands
+                    await asyncio.sleep(0.3)
+                    
+                    # If another command arrived during this sleep, discard this old one
+                    if connection_state["current_request_id"] != rid:
+                        logger.info(f"Discarding debounced command {rid}")
+                        continue
+                    
                     # Cancel any active running task before starting a new one
                     active_task = connection_state.get("active_task")
                     if active_task and not active_task.done():
                         active_task.cancel()
                         logger.info(f"Canceled active task for command ID: {connection_state.get('current_request_id')}")
                         
-                    connection_state["current_request_id"] = rid
                     task = asyncio.create_task(
                         process_voice_request(
                             rid=rid,
@@ -829,6 +839,12 @@ async def read_file_api(filepath: str = Query(...)):
 async def screenshot(filename: str = ""):
     skills = get_skills_engine(config)
     result = skills._skill_screenshot(filename)
+    return {"result": result}
+
+@app.post("/api/screen/record")
+async def screen_record():
+    skills = get_skills_engine(config)
+    result = skills._skill_screen_record()
     return {"result": result}
 
 @app.post("/api/screen/read")
