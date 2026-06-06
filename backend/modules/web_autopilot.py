@@ -202,6 +202,42 @@ NOW WRITE THE COMPLETE RESEARCH DOCUMENT. REMEMBER: AT LEAST 3000 WORDS, ALL 7 C
         """Pure synchronous URL resolver. 100% immune to Asyncio loop crashes."""
         clean_query = query.strip().lower()
 
+        # Pre-validation for concatenated phrases (e.g. "newtabyoutubeopenkaro")
+        if "." not in clean_query and "/" not in clean_query:
+            # Check length > 20 as a proxy for 3+ merged words
+            if len(clean_query) > 20:
+                COMMON_SITES = [
+                    "youtube", "google", "github", "netflix", "facebook", "instagram", "twitter", "linkedin",
+                    "amazon", "flipkart", "reddit", "wikipedia", "yahoo", "bing", "chatgpt", "openai",
+                    "claude", "anthropic", "gemini", "apple", "microsoft", "spotify", "twitch", "discord",
+                    "zoom", "slack", "notion", "figma", "canva", "pinterest", "tiktok", "snapchat", "whatsapp",
+                    "telegram", "quora", "medium", "vimeo", "dailymotion", "soundcloud", "imdb", "booking",
+                    "airbnb", "uber", "zomato", "swiggy", "myntra", "nykaa", "makemytrip", "cleartrip", "x"
+                ]
+                found_site = ""
+                for site in COMMON_SITES:
+                    if site in clean_query:
+                        if len(site) > len(found_site):
+                            found_site = site
+                
+                if found_site:
+                    clean_query = found_site
+                else:
+                    try:
+                        encoded = quote_plus(query)
+                        url = f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1"
+                        with httpx.Client(timeout=4.0) as client:
+                            resp = client.get(url)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                abstract_url = data.get("AbstractURL", "")
+                                if abstract_url:
+                                    return abstract_url
+                    except Exception as e:
+                        logger.warning(f"[Sync Pre-Val] Search validation failed: {e}")
+                    
+                    return f"https://duckduckgo.com/?q={quote_plus(query)}"
+
         # Layer 1: Core Map Check
         if clean_query in CORE_DEVELOPER_MAP:
             return CORE_DEVELOPER_MAP[clean_query]
