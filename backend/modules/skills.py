@@ -118,6 +118,7 @@ class SkillsEngine:
         self._smarthome_agent= None
         self._plugin_loader  = None
         self._app_indexer    = None
+        self._pending_links  = []
         self.skills_registry = self._register_skills()
         self._load_plugins()
 
@@ -216,6 +217,9 @@ class SkillsEngine:
             "read_screen":       self._skill_read_screen,
             "list_windows":      self._skill_list_windows,
             "screenshot":        self._skill_screenshot,
+            "screen_record":     self._skill_screen_record,
+            "open_link":         self._skill_open_link,
+            "open_link_select":  self._skill_open_link_select,
             "open_app":          self._skill_open_app,
             "list_apps":         self._skill_list_apps,
             "rebuild_app_index": self._skill_rebuild_app_index,
@@ -420,8 +424,8 @@ class SkillsEngine:
     def _skill_project_scaffold(self, *args): 
         return self.code_engine.project_scaffold(*args)
 
-    def _skill_find_and_explain(self, *args): 
-        return self.file_manager.find_and_explain(*args)
+    async def _skill_find_and_explain(self, *args): 
+        return await asyncio.to_thread(self.file_manager.find_and_explain, *args)
 
     def _skill_list_files(self, *args):       
         return self.file_manager.list_files(*args)
@@ -432,8 +436,8 @@ class SkillsEngine:
     def _skill_edit_file(self, *args):        
         return self.file_manager.edit_file(*args)
 
-    def _skill_search_files(self, *args):     
-        return self.file_manager.search_files(*args)
+    async def _skill_search_files(self, *args):     
+        return await asyncio.to_thread(self.file_manager.search_files, *args)
 
     def _skill_weather(self, city: str = "auto") -> str:
         try:
@@ -568,13 +572,15 @@ class SkillsEngine:
                 except ImportError:
                     pass
             
-            if bbox:
-                img = ImageGrab.grab(bbox=bbox, all_screens=True).convert('RGB')
-            else:
-                img = ImageGrab.grab(all_screens=True).convert('RGB')
-                
-            img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
-            img.save(str(path), quality=70, optimize=True)
+            def _capture():
+                if bbox:
+                    img = ImageGrab.grab(bbox=bbox, all_screens=True).convert('RGB')
+                else:
+                    img = ImageGrab.grab(all_screens=True).convert('RGB')
+                img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+                img.save(str(path), quality=70, optimize=True)
+
+            await asyncio.to_thread(_capture)
             
             from modules.llm import analyze_image_with_prompt
             return await analyze_image_with_prompt(
@@ -596,17 +602,205 @@ class SkillsEngine:
         except ImportError:
             return "pygetwindow needed"
 
-    def _skill_screenshot(self, filename: str = "", **kw) -> str:
+    async def _skill_screenshot(self, filename: str = "", **kw) -> str:
         try:
             from PIL import ImageGrab
             sd = Path(self.config.DATA_DIR) / "screenshots"
             sd.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             fp = sd / f"{filename.strip() or 'max_screenshot'}_{ts}.png"
-            pyautogui.screenshot(str(fp))
+            await asyncio.to_thread(pyautogui.screenshot, str(fp))
             return f"Screenshot saved: {fp.name}"
         except Exception as e:
             return f"Screenshot failed: {e}"
+
+    def _skill_screen_record(self, *args) -> str:
+        # Method 1: Win32 ctypes keybd_event (Low-level, highly reliable on Windows)
+        try:
+            import ctypes
+            import time
+            VK_CONTROL = 0x11
+            VK_SHIFT = 0x10
+            VK_R = 0x52
+            KEYEVENTF_KEYUP = 0x0002
+            
+            # Press keys
+            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+            ctypes.windll.user32.keybd_event(VK_SHIFT, 0, 0, 0)
+            ctypes.windll.user32.keybd_event(VK_R, 0, 0, 0)
+            
+            time.sleep(0.1)  # Brief pause to let Windows register the hotkey
+            
+            # Release keys
+            ctypes.windll.user32.keybd_event(VK_R, 0, KEYEVENTF_KEYUP, 0)
+            ctypes.windll.user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
+            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+            return "Screen recording toggled (Ctrl+Shift+R pressed)."
+        except Exception as e_ctypes:
+            logger.warning(f"ctypes screen record hotkey failed: {e_ctypes}")
+
+        # Method 2: Global keyboard library
+        try:
+            import keyboard
+            keyboard.send('win+shift+r')
+            return "Screen recording toggled)."
+        except Exception as e_kb:
+            logger.warning(f"keyboard library hotkey failed: {e_kb}")
+
+        # Method 3: PyAutoGUI fallback
+        if PYAUTOGUI_AVAILABLE:
+            try:
+                pyautogui.hotkey('win', 'shift', 'r')
+                return "Screen recording toggled ."
+            except Exception as e_py:
+                return f"All hotkey methods failed. Last error: {e_py}"
+
+        return "Failed to press hotkey. Dependencies or Windows APIs are unavailable."
+
+    def _extract_urls(self, text: str) -> list[str]:
+        # Match standard URLs starting with http:// or https:// or domain names
+        pattern = r'(https?://[^\s()<>]+|(?:www\.)?(?:[a-zA-Z0-9-]+\.)+(?:com|org|net|edu|gov|io|co|in|dev|ai|me|info|tv|xyz)(?:/[^\s()<>]*)*)'
+        candidates = re.findall(pattern, text)
+        urls = []
+        for c in candidates:
+            c_clean = c.strip(".,?!;:()[]{}'")
+            # Avoid extensions that look like files if it doesn't have a path slash or www./http(s)://
+            if c_clean.endswith(('.py', '.js', '.ts', '.css', '.html', '.json', '.md', '.txt', '.png', '.jpg', '.jpeg', '.gif', '.pdf')):
+                if "/" not in c_clean and not any(c_clean.startswith(prefix) for prefix in ("www.", "http://", "https://")):
+                    continue
+            if not c_clean.startswith(("http://", "https://")):
+                urls.append("https://" + c_clean)
+            else:
+                urls.append(c_clean)
+        return urls
+
+    async def _skill_open_link(self, source: str = "clipboard", *args) -> str:
+        source_lower = source.strip().lower()
+        
+        urls = []
+        if source_lower in ("clipboard", "copied", "copied link", "clipboard link"):
+            try:
+                import pyperclip
+                content = pyperclip.paste()
+                urls = self._extract_urls(content)
+                if not urls:
+                    return "No URLs found in the clipboard."
+            except Exception as e:
+                return f"Failed to read clipboard: {e}"
+                
+        elif source_lower == "screen":
+            try:
+                from PIL import Image, ImageGrab
+                ss_dir = Path(self.config.DATA_DIR) / "screenshots"
+                ss_dir.mkdir(parents=True, exist_ok=True)
+                path = ss_dir / "vision_link_debug.jpg"
+                
+                def _capture_link_screenshot():
+                    img = ImageGrab.grab(all_screens=True).convert('RGB')
+                    img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+                    img.save(str(path), quality=70, optimize=True)
+
+                await asyncio.to_thread(_capture_link_screenshot)
+                
+                from modules.llm import analyze_image_with_prompt
+                screen_text = await analyze_image_with_prompt(
+                    str(path),
+                    "Find and list all website URLs and links visible on this screen. List only the URLs space-separated, or say 'None'."
+                )
+                urls = self._extract_urls(screen_text)
+                if not urls:
+                    return "No links could be identified on the screen."
+            except Exception as e:
+                return f"Failed to read screen: {e}"
+                
+        elif source_lower.startswith("file:"):
+            filepath_str = source[5:].strip()
+            if not filepath_str and args:
+                filepath_str = args[0]
+            if not filepath_str:
+                return "Please specify a file path."
+                
+            try:
+                filepath = Path(filepath_str).expanduser().resolve()
+                if not filepath.is_absolute():
+                    search_dirs = getattr(self.config, 'SEARCH_DIRS', [Path.home() / "Desktop"])
+                    filepath = search_dirs[0] / filepath_str
+                    
+                if not filepath.exists():
+                    return f"File not found: {filepath_str}"
+                    
+                content = filepath.read_text(encoding='utf-8', errors='replace')
+                urls = self._extract_urls(content)
+                if not urls:
+                    return f"No URLs found in file '{filepath_str}'."
+            except Exception as e:
+                return f"Failed to read file: {e}"
+                
+        else:
+            filepath_str = source.strip()
+            try:
+                filepath = Path(filepath_str).expanduser().resolve()
+                if not filepath.is_absolute():
+                    search_dirs = getattr(self.config, 'SEARCH_DIRS', [Path.home() / "Desktop"])
+                    filepath = search_dirs[0] / filepath_str
+                if filepath.exists():
+                    content = filepath.read_text(encoding='utf-8', errors='replace')
+                    urls = self._extract_urls(content)
+                    if not urls:
+                        return f"No URLs found in file '{filepath_str}'."
+                else:
+                    return f"Unknown source or file not found: {source}"
+            except Exception as e:
+                return f"Failed to process source '{source}': {e}"
+
+        if not urls:
+            return "No links could be identified."
+
+        if len(urls) == 1:
+            url = urls[0]
+            try:
+                open_url_in_browser(url)
+                return f"Opened link: {url}"
+            except Exception as e:
+                return f"Failed to open link {url}: {e}"
+        else:
+            self._pending_links = urls
+            numbered_list = ", ".join(f"{i}. {url}" for i, url in enumerate(urls, 1))
+            return f"Found {len(urls)} links: {numbered_list}. Which one should I open?"
+
+    def _skill_open_link_select(self, number: str = "", *args) -> str:
+        if not hasattr(self, "_pending_links") or not self._pending_links:
+            return "No pending links to select from."
+        
+        num_str = number.strip()
+        if not num_str and args:
+            num_str = args[0].strip()
+            
+        word_to_num = {
+            "first": 1, "one": 1, "1st": 1, "1": 1,
+            "second": 2, "two": 2, "2nd": 2, "2": 2,
+            "third": 3, "three": 3, "3rd": 3, "3": 3,
+            "fourth": 4, "four": 4, "4th": 4, "4": 4,
+            "fifth": 5, "five": 5, "5th": 5, "5": 5,
+        }
+        
+        idx = word_to_num.get(num_str.lower())
+        if idx is None:
+            digits = re.findall(r'\d+', num_str)
+            if digits:
+                idx = int(digits[0])
+            else:
+                return f"Please specify a valid link number. I have {len(self._pending_links)} pending links."
+                
+        if idx < 1 or idx > len(self._pending_links):
+            return f"Invalid choice '{idx}'. Please select a number between 1 and {len(self._pending_links)}."
+            
+        selected_url = self._pending_links[idx - 1]
+        try:
+            open_url_in_browser(selected_url)
+            return f"Opened link {idx}: {selected_url}"
+        except Exception as e:
+            return f"Failed to open link {selected_url}: {e}"
 
     # ════════════════════════════════════════════
     # MULTI-APP OPENER
@@ -645,7 +839,7 @@ class SkillsEngine:
         "default browser", "my browser", "web browser",
     }
 
-    def _skill_open_app(self, *args, **kw) -> str:
+    async def _skill_open_app(self, *args, **kw) -> str:
         if not args:
             return "Which app should I open?"
             
@@ -662,9 +856,8 @@ class SkillsEngine:
             app_lower = app_name.lower()
             success = False
 
-            # Check if this app request is actually a web domain or in our fallback map
+            # Check if this app request is actually an explicit web URL/domain
             is_web = (
-                app_lower in web_map or
                 app_lower.startswith(("http://", "https://", "www.")) or
                 ("." in app_lower and " " not in app_lower)
             )
@@ -674,7 +867,7 @@ class SkillsEngine:
                 try:
                     from modules.web_autopilot import WebAutopilotEngine
                     autopilot = WebAutopilotEngine(self.config)
-                    verified_url = autopilot.resolve_accurate_url_sync(app_name)
+                    verified_url = await asyncio.to_thread(autopilot.resolve_accurate_url_sync, app_name)
                     if verified_url:
                         open_url_in_browser(verified_url)
                         clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
@@ -762,7 +955,7 @@ class SkillsEngine:
                     try:
                         from modules.web_autopilot import WebAutopilotEngine
                         autopilot = WebAutopilotEngine(self.config)
-                        verified_url = autopilot.resolve_accurate_url_sync(app_name)
+                        verified_url = await asyncio.to_thread(autopilot.resolve_accurate_url_sync, app_name)
                         if verified_url:
                             open_url_in_browser(verified_url)
                             clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
@@ -807,7 +1000,7 @@ class SkillsEngine:
 
     # ── MULTI-TAB WEB OPENER (BULLETPROOF SYNCHRONOUS RESOLVER) ──────────────
 
-    def _skill_web_open(self, url: str = "", **kw) -> str:
+    async def _skill_web_open(self, url: str = "", **kw) -> str:
         if not url:
             return "Provide a URL."
             
@@ -823,14 +1016,14 @@ class SkillsEngine:
             if not u: continue
             
             try:
-                # 🔥 Direct synchronous call! No async loops, no thread-safe crashes, zero issues.
-                verified_url = autopilot.resolve_accurate_url_sync(u)
+                # 🔥 Wrap the synchronous call in asyncio.to_thread
+                verified_url = await asyncio.to_thread(autopilot.resolve_accurate_url_sync, u)
                 
                 clean_name = verified_url.replace("https://", "").replace("http://", "").replace("www.", "")
                 clean_name = clean_name.split("/")[0].split(".")[0].capitalize()
                 
                 open_url_in_browser(verified_url)
-                time.sleep(0.4) 
+                await asyncio.sleep(0.4) 
                 results.append(f"{clean_name} opened")
                 
             except Exception as e:
