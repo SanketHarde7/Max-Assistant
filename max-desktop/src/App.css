@@ -18,22 +18,42 @@ body,
   justify-content: center;
   position: relative;
   padding-left: 0;
+
+  /* Smooth entry & springy activation */
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  filter: blur(0);
+  transition: 
+    opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.65s cubic-bezier(0.34, 1.65, 0.64, 1),
+    filter 0.3s ease;
 }
 
 .orb-stage.orb-hidden {
   opacity: 0;
   pointer-events: none;
-  transform: scale(0.92);
-  transition: opacity 180ms ease, transform 180ms ease;
+  transform: scale(0) rotate(180deg);
+  filter: blur(8px);
+  transition: 
+    opacity 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    filter 0.3s ease;
 }
 
 /* ═══════════════════════════════════════════════════
-   ORB CONTAINER
+   ORB SIZE CONSTANTS & CONTAINER
    ═══════════════════════════════════════════════════ */
+:root {
+  --orb-size: 34px;
+  --orb-core-inset: 6px;
+  --orb-ring-inset: -3px;
+  --orb-particle-orbit-1: 18px;
+  --orb-particle-orbit-2: 15px;
+}
 
 .circle-icon {
-  width: 52px;
-  height: 52px;
+  width: var(--orb-size);
+  height: var(--orb-size);
   border-radius: 999px;
   cursor: pointer;
   position: relative;
@@ -46,7 +66,7 @@ body,
 /* ─── Inner layers ─── */
 .orb-core {
   position: absolute;
-  inset: 8px;
+  inset: var(--orb-core-inset);
   border-radius: 999px;
   z-index: 3;
   transition: background 0.4s ease, box-shadow 0.4s ease;
@@ -63,7 +83,7 @@ body,
 
 .orb-ring {
   position: absolute;
-  inset: -4px;
+  inset: var(--orb-ring-inset);
   border-radius: 999px;
   z-index: 1;
   transition: border-color 0.4s ease, opacity 0.4s ease;
@@ -100,9 +120,9 @@ body,
     #1a4a8a, #2d7dd2, #5fb8ff, #2d7dd2, #1a4a8a
   );
   box-shadow:
-    0 0 20px rgba(45, 125, 210, 0.5),
-    0 0 40px rgba(45, 125, 210, 0.2),
-    inset 0 0 12px rgba(95, 184, 255, 0.3);
+    0 0 10px rgba(45, 125, 210, 0.5),
+    0 0 16px rgba(45, 125, 210, 0.15),
+    inset 0 0 8px rgba(95, 184, 255, 0.3);
   animation: orbRotate 6s linear infinite, breathe 4s ease-in-out infinite;
 }
 
@@ -211,16 +231,15 @@ body,
     #3a9bff, #6db8ff, #a8d8ff, #6db8ff, #3a9bff
   );
   box-shadow:
-    0 0 25px rgba(58, 155, 255, 0.7),
-    0 0 50px rgba(58, 155, 255, 0.3),
-    0 0 80px rgba(58, 155, 255, 0.1),
-    inset 0 0 15px rgba(168, 216, 255, 0.5);
-  animation: orbRotate 2s linear infinite, listenPulse 1s ease-in-out infinite;
+    0 0 12px rgba(58, 155, 255, 0.6),
+    0 0 20px rgba(58, 155, 255, 0.25),
+    inset 0 0 10px rgba(168, 216, 255, 0.5);
+  animation: orbRotate 2s linear infinite, listenPulse 1.2s ease-in-out infinite;
 }
 
 .circle-icon.listening .orb-core {
   background: radial-gradient(circle at 35% 35%, #d0ebff 0%, #6db8ff 40%, #3a9bff 100%);
-  box-shadow: 0 0 18px rgba(168, 216, 255, 0.8);
+  box-shadow: 0 0 14px rgba(168, 216, 255, 0.8);
   animation: coreListenPulse 0.8s ease-in-out infinite;
 }
 
@@ -257,15 +276,15 @@ body,
     #c96a00, #ff9f1c, #ffc56b, #ff9f1c, #c96a00
   );
   box-shadow:
-    0 0 22px rgba(255, 159, 28, 0.7),
-    0 0 45px rgba(255, 159, 28, 0.25),
-    inset 0 0 14px rgba(255, 197, 107, 0.4);
+    0 0 10px rgba(255, 159, 28, 0.6),
+    0 0 18px rgba(255, 159, 28, 0.2),
+    inset 0 0 10px rgba(255, 197, 107, 0.4);
   animation: orbRotate 1.5s linear infinite, processPulse 1.2s ease-in-out infinite;
 }
 
 .circle-icon.processing .orb-core {
   background: radial-gradient(circle at 35% 35%, #ffe4b0 0%, #ff9f1c 50%, #c96a00 100%);
-  box-shadow: 0 0 15px rgba(255, 197, 107, 0.7);
+  box-shadow: 0 0 12px rgba(255, 197, 107, 0.7);
   animation: coreProcessPulse 0.6s ease-in-out infinite;
 }
 
@@ -301,15 +320,15 @@ body,
     #6c3aaa, #9b59d0, #c78dff, #9b59d0, #6c3aaa
   );
   box-shadow:
-    0 0 22px rgba(155, 89, 208, 0.6),
-    0 0 45px rgba(155, 89, 208, 0.2),
-    inset 0 0 12px rgba(199, 141, 255, 0.4);
+    0 0 10px rgba(155, 89, 208, 0.5),
+    0 0 18px rgba(155, 89, 208, 0.15),
+    inset 0 0 8px rgba(199, 141, 255, 0.4);
   animation: orbRotate 3s linear infinite, speakWave 0.8s ease-in-out infinite;
 }
 
 .circle-icon.speaking .orb-core {
   background: radial-gradient(circle at 35% 35%, #e0c4ff 0%, #9b59d0 50%, #6c3aaa 100%);
-  box-shadow: 0 0 16px rgba(199, 141, 255, 0.7);
+  box-shadow: 0 0 12px rgba(199, 141, 255, 0.7);
   animation: coreSpeakPulse 0.5s ease-in-out infinite;
 }
 
@@ -345,14 +364,14 @@ body,
     #b30000, #ff4d4d, #ff8a8a, #ff4d4d, #b30000
   );
   box-shadow:
-    0 0 20px rgba(255, 77, 77, 0.6),
-    inset 0 0 10px rgba(255, 138, 138, 0.3);
+    0 0 10px rgba(255, 77, 77, 0.5),
+    inset 0 0 8px rgba(255, 138, 138, 0.3);
   animation: shake 0.45s ease, orbRotate 2s linear infinite;
 }
 
 .circle-icon.error .orb-core {
   background: radial-gradient(circle at 35% 35%, #ffd0d0 0%, #ff4d4d 50%, #b30000 100%);
-  box-shadow: 0 0 12px rgba(255, 77, 77, 0.6);
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.6);
 }
 
 .circle-icon.error .orb-shell {
@@ -373,8 +392,8 @@ body,
     #444, #666, #888, #666, #444
   );
   box-shadow:
-    0 0 10px rgba(100, 100, 100, 0.3),
-    inset 0 0 8px rgba(255, 255, 255, 0.05);
+    0 0 8px rgba(100, 100, 100, 0.2),
+    inset 0 0 6px rgba(255, 255, 255, 0.05);
   opacity: 0.55;
   animation: orbRotate 12s linear infinite, breatheSlow 3s ease-in-out infinite;
 }
@@ -407,72 +426,72 @@ body,
   to   { filter: hue-rotate(360deg); }
 }
 
-/* Idle breathing */
+/* Idle breathing — EXTREMELY MINIMAL */
 @keyframes breathe {
   0%   { transform: scale(1);     }
-  50%  { transform: scale(1.04);  }
+  50%  { transform: scale(1.01);  }
   100% { transform: scale(1);     }
 }
 
 @keyframes breatheSlow {
   0%   { transform: scale(1);    opacity: 0.5; }
-  50%  { transform: scale(1.03); opacity: 0.6; }
+  50%  { transform: scale(1.005); opacity: 0.6; }
   100% { transform: scale(1);    opacity: 0.5; }
 }
 
-/* Core pulsing */
+/* Core pulsing — EXTREMELY MINIMAL */
 @keyframes corePulse {
   0%   { transform: scale(1);    opacity: 0.8; }
-  50%  { transform: scale(1.1);  opacity: 1;   }
+  50%  { transform: scale(1.015);  opacity: 1;   }
   100% { transform: scale(1);    opacity: 0.8; }
 }
 
 @keyframes coreListenPulse {
   0%   { transform: scale(1);    opacity: 0.9; }
-  50%  { transform: scale(1.15); opacity: 1;   }
+  50%  { transform: scale(1.02); opacity: 1;   }
   100% { transform: scale(1);    opacity: 0.9; }
 }
 
 @keyframes coreProcessPulse {
-  0%   { transform: scale(0.95); opacity: 0.7; }
-  50%  { transform: scale(1.1);  opacity: 1;   }
-  100% { transform: scale(0.95); opacity: 0.7; }
+  0%   { transform: scale(0.99); opacity: 0.7; }
+  50%  { transform: scale(1.02);  opacity: 1;   }
+  100% { transform: scale(0.99); opacity: 0.7; }
 }
 
 @keyframes coreSpeakPulse {
   0%   { transform: scale(1);    opacity: 0.85; }
-  30%  { transform: scale(1.12); opacity: 1;    }
-  60%  { transform: scale(0.95); opacity: 0.9;  }
+  30%  { transform: scale(1.02); opacity: 1;    }
+  60%  { transform: scale(0.99); opacity: 0.9;  }
   100% { transform: scale(1);    opacity: 0.85; }
 }
 
-/* Listen state pulse */
+/* Listen state pulse — EXTREMELY MINIMAL */
 @keyframes listenPulse {
   0%   { transform: scale(1);    }
-  50%  { transform: scale(1.08); }
+  50%  { transform: scale(1.01); }
   100% { transform: scale(1);    }
 }
 
-/* Process state pulse */
+/* Process state pulse — EXTREMELY MINIMAL */
 @keyframes processPulse {
   0%   { transform: scale(1);    }
-  50%  { transform: scale(1.05); }
+  50%  { transform: scale(1.008); }
   100% { transform: scale(1);    }
 }
 
-/* Speaking wave */
+/* Speaking wave — EXTREMELY MINIMAL */
 @keyframes speakWave {
   0%   { transform: scale(1);    }
-  25%  { transform: scale(1.06); }
-  50%  { transform: scale(0.97); }
-  75%  { transform: scale(1.04); }
+  25%  { transform: scale(1.015); }
+  50%  { transform: scale(0.99); }
+  75%  { transform: scale(1.01); }
   100% { transform: scale(1);    }
 }
 
-/* Shell expansion */
+/* Shell expansion — EXTREMELY MINIMAL */
 @keyframes shellExpand {
   0%   { transform: scale(1);    opacity: 0.8; }
-  50%  { transform: scale(1.06); opacity: 1;   }
+  50%  { transform: scale(1.01); opacity: 1;   }
   100% { transform: scale(1);    opacity: 0.8; }
 }
 
@@ -481,16 +500,16 @@ body,
   to   { transform: rotate(360deg); }
 }
 
-/* Ring animations */
+/* Ring animations — EXTREMELY MINIMAL */
 @keyframes ringPulse {
   0%   { transform: scale(1);   opacity: 0.4; }
-  50%  { transform: scale(1.1); opacity: 0.8; }
+  50%  { transform: scale(1.015); opacity: 0.8; }
   100% { transform: scale(1);   opacity: 0.4; }
 }
 
 @keyframes ringExpand {
   0%   { transform: scale(1);    opacity: 0.5; }
-  50%  { transform: scale(1.25); opacity: 0.9; }
+  50%  { transform: scale(1.03); opacity: 0.9; }
   100% { transform: scale(1);    opacity: 0.5; }
 }
 
@@ -501,13 +520,13 @@ body,
 
 /* Particle orbits */
 @keyframes particleOrbit1 {
-  from { transform: rotate(0deg)   translateX(28px) rotate(0deg);   }
-  to   { transform: rotate(360deg) translateX(28px) rotate(-360deg); }
+  from { transform: rotate(0deg)   translateX(var(--orb-particle-orbit-1)) rotate(0deg);   }
+  to   { transform: rotate(360deg) translateX(var(--orb-particle-orbit-1)) rotate(-360deg); }
 }
 
 @keyframes particleOrbit2 {
-  from { transform: rotate(0deg)   translateX(24px) rotate(0deg);   }
-  to   { transform: rotate(360deg) translateX(24px) rotate(-360deg); }
+  from { transform: rotate(0deg)   translateX(var(--orb-particle-orbit-2)) rotate(0deg);   }
+  to   { transform: rotate(360deg) translateX(var(--orb-particle-orbit-2)) rotate(-360deg); }
 }
 
 /* Error shake */
