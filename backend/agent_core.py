@@ -120,7 +120,9 @@ class MaxAgent:
             kb_prefix = ""
             try:
                 from modules.knowledge_base import get_knowledge_base
-                kb_ctx = get_knowledge_base(self.config).query(text, top_k=3, min_similarity=0.30)
+                kb_ctx = await asyncio.to_thread(
+                    get_knowledge_base(self.config).query, text, top_k=3, min_similarity=0.30
+                )
                 if kb_ctx:
                     kb_prefix = kb_ctx + "\n\n"
                     logger.info("KB context injected into prompt")
