@@ -60,9 +60,9 @@ class Config:
         dirs = [Path(p.strip()) for p in raw.split(",") if p.strip()]
         if not dirs:
             dirs = [
-                self.PROJECT_ROOT / "knowleddge",
                 self.PROJECT_ROOT / "knowledge",
-                self.BACKEND_DIR / "knowleddge",
+                self.PROJECT_ROOT / "knowledge",
+                self.BACKEND_DIR / "knowledge",
                 self.BACKEND_DIR / "knowledge",
             ]
         return dirs
