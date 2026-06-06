@@ -139,7 +139,7 @@ export function useVoiceInput() {
       }
       const rms = Math.sqrt(sum / input.length)
       
-      const threshold = 0.038 // Raised from 0.025 to filter out room noise and animal calls
+      const threshold = 0.015 // Lowered from 0.038 to increase mic sensitivity
 
       // Frequency Analysis Check (Change 2)
       let hasVoiceFrequency = true
@@ -162,7 +162,7 @@ export function useVoiceInput() {
         const voiceAverage = count > 0 ? voiceSum / count : 0
         
         // If average energy in 200-3000Hz range is not enough, discard it
-        if (voiceAverage < 30) {
+        if (voiceAverage < 15) {
           hasVoiceFrequency = false
         }
       }
@@ -255,7 +255,7 @@ export function useVoiceInput() {
       if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current)
       cooldownTimerRef.current = setTimeout(() => {
         cooldownActiveRef.current = false
-      }, 1500) // 1.5 seconds cooldown to let audio echo clear out completely
+      }, 500) // 0.5 seconds cooldown to let audio echo clear out completely
     }
     jarvisStateRef.current = state
   }, [])
