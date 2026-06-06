@@ -11,6 +11,7 @@ const SKILLS = [
   { label: '🔍 Search',   desc: 'Search latest AI news' },
   { label: '📓 Notepad',  desc: 'Open Notepad' },
   { label: '📸 Screenshot', desc: 'Take a screenshot' },
+  { label: '🎥 Record Screen', desc: 'Toggle screen recording' },
   { label: '📋 Clipboard', desc: 'Clipboard content batao' },
   { label: '🔒 Lock PC',  desc: 'System lock karo' },
   { label: '🔊 Volume',   desc: 'Volume up karo' },
