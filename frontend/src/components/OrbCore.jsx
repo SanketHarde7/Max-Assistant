@@ -15,7 +15,7 @@ const STATE_CONFIG = {
     emissive: '#003a4d',
     distort: 0.25,
     speed: 0.8,
-    scale: 1.8,
+    scale: 0.8,
     particleColor: '#00d4ff',
     ringSpeed: 0.3,
     glowIntensity: 0.4,
@@ -23,19 +23,19 @@ const STATE_CONFIG = {
   listening: {
     color: '#00ff88',
     emissive: '#004d2a',
-    distort: 0.5,
-    speed: 3.0,
-    scale: 2.0,
+    distort: 0.4,
+    speed: 2.0,
+    scale: 0.9,
     particleColor: '#00ff88',
-    ringSpeed: 1.5,
-    glowIntensity: 0.8,
+    ringSpeed: 1.0,
+    glowIntensity: 0.6,
   },
   thinking: {
     color: '#ffd700',
     emissive: '#4d3f00',
     distort: 0.35,
     speed: 1.5,
-    scale: 1.9,
+    scale: 0.85,
     particleColor: '#ffd700',
     ringSpeed: 2.0,
     glowIntensity: 0.7,
@@ -45,10 +45,10 @@ const STATE_CONFIG = {
     emissive: '#4d0022',
     distort: 0.45,
     speed: 2.5,
-    scale: 2.1,
+    scale: 0.95,
     particleColor: '#ff3a8a',
     ringSpeed: 1.0,
-    glowIntensity: 0.9,
+    glowIntensity: 0.8,
   },
 }
 
@@ -66,7 +66,7 @@ function EnergyCore({ state }) {
 
   return (
     <mesh ref={meshRef}>
-      <icosahedronGeometry args={[0.5, 1]} />
+      <icosahedronGeometry args={[0.35, 1]} />
       <meshBasicMaterial
         color={cfg.color}
         wireframe
@@ -78,7 +78,7 @@ function EnergyCore({ state }) {
 }
 
 // ── Orbiting Particle Ring ──
-function ParticleRing({ state, radius = 2.8, count = 60 }) {
+function ParticleRing({ state, radius = 1.3, count = 60 }) {
   const groupRef = useRef()
   const cfg = STATE_CONFIG[state] || STATE_CONFIG.idle
 
@@ -125,7 +125,7 @@ function ParticleRing({ state, radius = 2.8, count = 60 }) {
 }
 
 // ── Outer Glow Ring ──
-function GlowRing({ state, radius = 2.5 }) {
+function GlowRing({ state, radius = 1.2 }) {
   const meshRef = useRef()
   const cfg = STATE_CONFIG[state] || STATE_CONFIG.idle
 
@@ -162,7 +162,7 @@ function SecondRing({ state }) {
 
   return (
     <mesh ref={meshRef} rotation={[Math.PI / 3, Math.PI / 4, 0]}>
-      <ringGeometry args={[3.0, 3.04, 128]} />
+      <ringGeometry args={[1.4, 1.44, 128]} />
       <meshBasicMaterial
         color={cfg.color}
         transparent
@@ -214,8 +214,10 @@ export default function OrbCore({ state = 'idle' }) {
   useFrame((s, delta) => {
     if (orbRef.current) {
       orbRef.current.rotation.y += delta * 0.15
-      // Gentle breathing
-      const breath = 1 + Math.sin(s.clock.elapsedTime * 1.5) * 0.02
+      // Minimal breathing for listening state, gentle for others
+      const amp = state === 'listening' ? 0.002 : 0.018
+      const frequency = state === 'listening' ? 0.8 : 1.5
+      const breath = 1 + Math.sin(s.clock.elapsedTime * frequency) * amp
       orbRef.current.scale.setScalar(cfg.scale * breath)
     }
   })
