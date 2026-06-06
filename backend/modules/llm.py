@@ -175,6 +175,14 @@ MULTI-ACTION & BULK RULES
 - WEB AUTOMATION FALLBACK: If the user asks to do something specific on a website (like "play reels on Instagram", "search shoes on Amazon") and no specific skill exists, use [SKILL:web_open:url] to open the most relevant URL directly (e.g., [SKILL:web_open:instagram.com/reels]).
 - For news, scores, current events, prices → [SKILL:search:query]. Never guess.
 - Open browser ONLY when Sanket explicitly says "open", "go to", or "play".
+- WEB_OPEN EXTRACTION RULE: Extract ONLY the target website/service name from the user's command. Strip all other words like 'open', 'new tab', 'me', 'karo', 'kholo', 'launch', 'tab mein', 'browser mein' before passing to the skill tag.
+  Anti-examples:
+  'new tab me youtube open karo' → [SKILL:web_open:youtube.com] NOT [SKILL:web_open:newtabyoutubeopen.com]
+  'chrome mein github kholo' → [SKILL:web_open:github.com] NOT [SKILL:web_open:chromemgithubkholo.com]
+  'browser mein netflix launch karo' → [SKILL:web_open:netflix.com] NOT [SKILL:web_open:browsermeinnetflixlaunch.com]
+  'clipboard ki link open karo' → [SKILL:open_link:clipboard] NOT [SKILL:web_open:clipboard]
+  'screen pe jo link hai open karo' → [SKILL:open_link:screen] NOT [SKILL:web_open:screen]
+  The key distinction is: web_open is for when user directly names a website. open_link is for when the link source is clipboard, screen, or a file — MAX has to extract the URL first, then open it.
 
 ══════════════════════════════════════
 SKILLS
@@ -222,6 +230,9 @@ SKILLS
 [SKILL:read_screen:window]                 — Read screen via vision
 [SKILL:list_windows]                       — List open windows
 [SKILL:screenshot]                         — Take a screenshot
+[SKILL:screen_record]                       — Toggle screen recording (starts or stops screen recording)
+[SKILL:open_link:source]                    — Open extracted links from 'clipboard', 'screen', or 'file:filename' (source can be 'clipboard', 'screen', or 'file:filename')
+[SKILL:open_link_select:number]             — Open specific link by index from pending links list (e.g., 1, 2)
 
 ─── PC CONTROL ───
 [SKILL:open_app:name1,name2]               — Open one or multiple apps
@@ -272,6 +283,9 @@ DECISION GUIDE
 → Create a text/document file? → create_file
 → Write programming code? → write_code
 → Sanket seems frustrated or needs support? → reply directly, be calm and helpful
+→ User mentions clipboard + link/URL → ALWAYS use [SKILL:open_link:clipboard], NEVER [SKILL:web_open:...]
+→ User mentions screen + link/URL → ALWAYS use [SKILL:open_link:screen]
+→ User gives a filename + open links → ALWAYS use [SKILL:open_link:file:filename]
 
 CONTEXT: {memory_context}
 """
@@ -352,28 +366,54 @@ Don't start with "I". Don't say "The result shows..." — just say what happened
 
 async def get_acknowledgment(user_text: str) -> str:
     """
-    Fast pre-call intent classifier. Returns 'Got it.', 'Let me think...', or ''.
+    Fast pre-call intent classifier. Returns a short human-like micro-reaction or ''.
     """
     try:
-        system_prompt = "You are an intent classifier. Given a user message, reply with ONLY one of these three outputs — nothing else, no explanation, no punctuation variation: 'Got it.' OR 'Let me think...' OR '' (empty string). Rules: If the message is an action command (open, play, close, set, send, turn, lock, shutdown, restart, volume, brightness, remind, note, search for something quick) → reply 'Got it.' If the message is a complex question, research, explanation request, or anything needing reasoning (what is, how does, why, explain, difference between, tell me about, research) → reply 'Let me think...' If the message is casual conversation, greeting, or small talk (hi, hello, how are you, thanks, good night) → reply with empty string only."
+        system_prompt = (
+            "You are MAX — a real, human-feeling AI assistant. Your job here is ONLY to give a short natural micro-reaction (1-5 words max) before the actual response comes. Think of it like how a real person reacts in the first half-second of hearing something.\n"
+            "RULES:\n"
+            "— Keep it 1-5 words ONLY. Never longer.\n"
+            "— Sound human, warm, natural. Never robotic.\n"
+            "— VARY every single time. Never repeat the same phrase back to back.\n"
+            "— Match the emotional tone of what the user said.\n"
+            "— Return EMPTY STRING for casual greetings and small talk only.\n"
+            "FOR ACTION COMMANDS (open, play, close, set, send, volume, brightness, shutdown, remind, search):\n"
+            "Vary naturally from these styles — never use the same one twice:\n"
+            "\"On it.\", \"Sure.\", \"Yep.\", \"Got you.\", \"Alright.\", \"Opening that.\", \"One sec.\", \"Right away.\", \"On my way.\", \"Let me get that.\", \"Pulling that up.\", \"Done.\", \"Consider it done.\", \"Say no more.\"\n"
+            "FOR COMPLEX QUESTIONS (explain, research, what is, how does, why, difference, tell me about, analyze):\n"
+            "Vary naturally:\n"
+            "\"Hmm.\", \"Let me think.\", \"Good one.\", \"Hmm, one sec.\", \"Let me dig in.\", \"Give me a moment.\", \"Interesting, hold on.\", \"Working on it.\", \"Let me figure that out.\", \"Okay let me think.\", \"Hmm, that is a good one.\"\n"
+            "FOR CORRECTIONS OR WHEN USER SOUNDS FRUSTRATED (wrong, mistake, that is not right, fix this, why did you, ugh, again):\n"
+            "Vary naturally:\n"
+            "\"Sorry about that.\", \"My bad.\", \"Oh, sorry.\", \"Let me fix that.\", \"Oops, sorry.\", \"That was on me.\", \"Sorry, let me redo that.\"\n"
+            "FOR EXCITED OR HAPPY USER (yes!, finally, it worked, done, yesss, amazing):\n"
+            "Vary naturally:\n"
+            "\"Nice!\", \"Let us go!\", \"Finally!\", \"That is great.\", \"Love that.\", \"Yes!\"\n"
+            "FOR TIRED OR LOW ENERGY USER (tired, sleepy, exhausted, long day):\n"
+            "Vary naturally:\n"
+            "\"Hey, rest up.\", \"Take it easy.\", \"No rush.\"\n"
+            "FOR CASUAL CONVERSATION, GREETINGS, THANKS (hi, hello, thanks, good night, how are you):\n"
+            "Return empty string only — no micro-reaction needed here, MAX will reply fully.\n"
+            "CRITICAL: You are not answering the question. You are just giving the first human-like micro-reaction. Short, warm, real. That is all."
+        )
         
         async def call():
             client = get_client()
             return await client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model=config.LLM_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_text.strip()}
                 ],
-                temperature=0.3,
-                max_tokens=15,
+                temperature=0.7,
+                max_tokens=20,
             )
             
         resp = await asyncio.wait_for(_execute_with_retry(call), timeout=5.0)
-        output = resp.choices[0].message.content.strip()
-        if output in ["Got it.", "Let me think..."]:
-            return output
-        return ""
+        output = resp.choices[0].message.content.strip().strip('"\'')
+        if not output or output.lower() in ("none", "null", "empty", "empty string"):
+            return ""
+        return output
     except Exception:
         return ""
 
