@@ -12,7 +12,7 @@ export function useVoiceInput() {
   const analyserRef = useRef(null)
   const streamRef = useRef(null)
   const audioContextRef = useRef(null)
-  
+
   // VAD Refs
   const processorRef = useRef(null)
   const isContinuousActiveRef = useRef(false)
@@ -64,7 +64,7 @@ export function useVoiceInput() {
 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)()
     audioContextRef.current = audioContext
-    
+
     // Resume context if suspended
     if (audioContext.state === 'suspended') {
       try {
@@ -73,7 +73,7 @@ export function useVoiceInput() {
         console.warn("Failed to resume new AudioContext:", e)
       }
     }
-    
+
     const source = audioContext.createMediaStreamSource(stream)
     const analyser = audioContext.createAnalyser()
     analyser.fftSize = 512
@@ -87,7 +87,7 @@ export function useVoiceInput() {
     source.connect(processor)
     // Connect to destination but we won't hear ourselves because we don't output anything in onaudioprocess
     processor.connect(audioContext.destination)
-    
+
     let currentRecorder = null
     let currentChunks = []
 
@@ -138,8 +138,8 @@ export function useVoiceInput() {
         sum += input[i] * input[i]
       }
       const rms = Math.sqrt(sum / input.length)
-      
-      const threshold = 0.015 // Lowered from 0.038 to increase mic sensitivity
+
+      const threshold = 0.027 // Lowered from 0.038 to increase mic sensitivity
 
       // Frequency Analysis Check (Change 2)
       let hasVoiceFrequency = true
@@ -148,11 +148,11 @@ export function useVoiceInput() {
         const binSize = sampleRate / 512
         const minBin = Math.floor(200 / binSize)
         const maxBin = Math.ceil(3000 / binSize)
-        
+
         const bufferLength = analyserRef.current.frequencyBinCount
         const dataArray = new Uint8Array(bufferLength)
         analyserRef.current.getByteFrequencyData(dataArray)
-        
+
         let voiceSum = 0
         let count = 0
         for (let i = minBin; i <= maxBin && i < bufferLength; i++) {
@@ -160,7 +160,7 @@ export function useVoiceInput() {
           count++
         }
         const voiceAverage = count > 0 ? voiceSum / count : 0
-        
+
         // If average energy in 200-3000Hz range is not enough, discard it
         if (voiceAverage < 15) {
           hasVoiceFrequency = false
@@ -197,7 +197,7 @@ export function useVoiceInput() {
       // Pause continuous listening while manually recording
       const previousContinuousState = isContinuousActiveRef.current
       isContinuousActiveRef.current = false
-      
+
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
       const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType })
       mediaRecorderRef.current = mediaRecorder
@@ -206,7 +206,7 @@ export function useVoiceInput() {
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
       mediaRecorder.start(100)
       setIsRecording(true)
-      
+
       // Store the previous state to resume later
       mediaRecorder.previousContinuousState = previousContinuousState
     } catch (err) {
@@ -221,14 +221,14 @@ export function useVoiceInput() {
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         setIsRecording(false)
-        
+
         // Restore continuous listening state with a safety delay to prevent tail-end VAD triggers
         if (mediaRecorderRef.current.previousContinuousState) {
           setTimeout(() => {
             isContinuousActiveRef.current = true
           }, 1000)
         }
-        
+
         resolve(audioBlob)
       }
       mediaRecorderRef.current.stop()
@@ -263,8 +263,8 @@ export function useVoiceInput() {
   const stopContinuousListening = useCallback(() => {
     isContinuousActiveRef.current = false
     if (isSpeakingRef.current) {
-        setIsRecording(false)
-        isSpeakingRef.current = false
+      setIsRecording(false)
+      isSpeakingRef.current = false
     }
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current)
