@@ -1,3 +1,5 @@
+<!-- Path: max-desktop/README.md -->
+<!-- Use: Documentation for building Tauri desktop app. -->
 # Tauri + React + Typescript
 
 This template should help get you started developing with Tauri, React and Typescript in Vite.
