@@ -1,3 +1,5 @@
+# Path: backend/modules/app_indexer.py
+# Use: Indexes installed desktop programs for easy launching.
 """
 app_indexer.py — MAX v4.0
 Dynamically scans and indexes ALL installed apps on Windows.
