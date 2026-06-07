@@ -1,3 +1,5 @@
+# Path: backend/main.py
+# Use: Main entry point starting the backend API server.
 """
 main.py — MAX v4.2
 Backend: FastAPI + WebSocket + REST endpoints.
