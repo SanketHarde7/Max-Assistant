@@ -1,3 +1,5 @@
+# Path: backend/modules/gatekeeper.py
+# Use: Ensures security policies and authorization checks.
 """
 gatekeeper.py — MAX v4.2
 Post-processes LLM output before UI + TTS.
