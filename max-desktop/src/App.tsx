@@ -1,3 +1,5 @@
+// Path: max-desktop/src/App.tsx
+// Use: Main component layout for Tauri desktop view.
 /**
  * App.tsx — MAX v4.9 (Merged Health & Autopilot Follow-ups)
  * Orb UI: centered, draggable, full voice pipeline.
