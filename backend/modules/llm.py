@@ -1,3 +1,5 @@
+# Path: backend/modules/llm.py
+# Use: Sends API requests to LLM provider endpoints.
 """
 llm.py — MAX v5.0 (All-Rounder | Personality & Tone Overhaul)
 - Language: Strictly English only.
