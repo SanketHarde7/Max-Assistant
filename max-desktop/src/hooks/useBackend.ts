@@ -1,3 +1,5 @@
+// Path: max-desktop/src/hooks/useBackend.ts
+// Use: Connects Tauri front-end to Rust commands.
 /**
  * useBackend.ts — MAX v4.3
  * WebSocket connection manager for MAX backend.
