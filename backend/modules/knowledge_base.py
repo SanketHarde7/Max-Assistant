@@ -1,3 +1,5 @@
+# Path: backend/modules/knowledge_base.py
+# Use: Queries stored project documents and knowledge data.
 """
 knowledge_base.py — MAX v4.2
 Local RAG system using ChromaDB + sentence-transformers.
