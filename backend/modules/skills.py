@@ -1,3 +1,5 @@
+# Path: backend/modules/skills.py
+# Use: Registers and triggers assistant's executable skills.
 """
 skills.py — MAX v4.6 (Multi-Skill Executor & URL Cleaner)
 """
