@@ -1,3 +1,5 @@
+# Path: backend/modules/memory.py
+# Use: Manages session history and persistent user context.
 """
 memory.py — MAX v4.0
 Added: Personality evolution tracking, auto fact extraction, buddy tone.
