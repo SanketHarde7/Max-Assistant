@@ -1,3 +1,5 @@
+# Path: backend/modules/skill_forge.py
+# Use: Dynamically codes new skills based on prompts.
 """
 skill_forge.py — MAX SkillForge Engine v2.0
 
