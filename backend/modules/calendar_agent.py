@@ -1,3 +1,5 @@
+# Path: backend/modules/calendar_agent.py
+# Use: Manages calendars, events, and scheduling tasks.
 """
 calendar_agent.py — MAX v4.0
 Local .ics calendar (zero setup, offline). No Google API needed.
