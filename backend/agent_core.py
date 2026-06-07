@@ -1,3 +1,5 @@
+# Path: backend/agent_core.py
+# Use: Core execution manager for custom plugins and agents.
 """
 agent_core.py — MAX v4.2
 Pipeline:
