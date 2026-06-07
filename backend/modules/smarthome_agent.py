@@ -1,3 +1,5 @@
+# Path: backend/modules/smarthome_agent.py
+# Use: Controls local smart home appliances and IoT.
 # """
 # smarthome_agent.py + ir_controller.py — MAX v4.0
 # Smart Home Control:
