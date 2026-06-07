@@ -1,3 +1,5 @@
+// Path: max-desktop/src/overlayController.ts
+// Use: Manages Tauri windows, overlays, and visibility.
 import { invoke } from "@tauri-apps/api/core";
 
 export async function start_listening_animation() {
