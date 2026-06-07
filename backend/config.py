@@ -234,6 +234,47 @@ class Config:
         logger.info(f"🔄 API Key rotated → index {self._current_key_idx}")
         return True
 
+    # ── AI Orchestrator ──
+    AI_ORCHESTRATOR_ENABLED: bool = True
+    AI_RESPONSE_TIMEOUT: int = 120
+    AI_PAGE_LOAD_TIMEOUT: int = 15
+    AI_INJECT_METHOD: str = "clipboard"
+    AI_KEEP_BROWSER_OPEN: bool = True
+    AI_DEFAULT_PLATFORM: str = "chatgpt"
+
+    @property
+    def OPERA_PROFILE_PATH(self) -> str:
+        import platform as plat
+        from pathlib import Path
+        system = plat.system()
+        home = Path.home()
+        custom_path = os.getenv("OPERA_PROFILE_PATH")
+        if custom_path:
+            return custom_path
+        if system == "Windows":
+            return str(home / "AppData" / "Roaming" / "Opera Software" / "Opera Stable")
+        elif system == "Darwin":
+            return str(home / "Library" / "Application Support" / "com.operasoftware.Opera")
+        else:
+            return str(home / ".config" / "opera")
+
+    @property
+    def OPERA_BINARY_PATH(self) -> str:
+        import platform as plat
+        from pathlib import Path
+        system = plat.system()
+        home = Path.home()
+        custom_path = os.getenv("OPERA_BINARY_PATH")
+        if custom_path:
+            return custom_path
+        if system == "Windows":
+            return str(home / "AppData" / "Local" / "Programs" / "Opera" / "opera.exe")
+        elif system == "Darwin":
+            return "/Applications/Opera.app/Contents/MacOS/Opera"
+        else:
+            return "/usr/bin/opera"
+
+
 
 config = Config()
 
