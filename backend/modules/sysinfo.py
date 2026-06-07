@@ -1,3 +1,5 @@
+# Path: backend/modules/sysinfo.py
+# Use: Retrieves current CPU, RAM, and OS status.
 """
 sysinfo.py — MAX v4.2
 System information skill: CPU, RAM, disk usage, battery.
