@@ -39,6 +39,9 @@ DATA_SKILLS = {
     "browser_scrape", "plugin_list", "list_apps",
     "sysinfo", "top_processes", "reminder_list",
     "kb_search", "kb_list", "kb_stats", "kb_rebuild",
+    "ai_ask", "ai_ask_screen", "ai_ask_file", "ai_ask_clipboard",
+    "ai_compare", "ai_chain", "ai_route", "ai_workflow",
+    "ai_workflow_save", "ai_workflow_list"
 }
 
 LONG_RESULT_SKILLS = {
@@ -46,6 +49,9 @@ LONG_RESULT_SKILLS = {
     "code_review", "run_code", "search_files",
     "read_screen", "list_windows", "browser_scrape",
     "list_apps", "top_processes",
+    "ai_ask", "ai_ask_screen", "ai_ask_file", "ai_ask_clipboard",
+    "ai_compare", "ai_chain", "ai_route", "ai_workflow",
+    "ai_workflow_save", "ai_workflow_list"
 }
 
 TTS_MAX_CHARS = 280
