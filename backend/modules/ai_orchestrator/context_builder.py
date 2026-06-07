@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/context_builder.py
+# Use: Assembles prompts and context data for LLM.
 # context_builder.py — Aggregates content from files, screen, clipboard, and text
 import os
 import logging
