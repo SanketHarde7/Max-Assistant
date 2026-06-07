@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/platform_handler.py
+# Use: Executes tasks on designated platform integrations.
 # platform_handler.py — Selenium driver wrapper for AI Orchestrator using Opera
 import os
 import time
