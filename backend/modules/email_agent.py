@@ -1,3 +1,5 @@
+# Path: backend/modules/email_agent.py
+# Use: Drafts, sends, and lists user email messages.
 """
 email_agent.py — MAX v4.0
 Gmail Email Integration (Free tier, needs App Password)
