@@ -1,3 +1,5 @@
+# Path: backend/modules/reminder_scheduler.py
+# Use: Schedules timed callbacks for system reminders.
 """
 reminder_scheduler.py — MAX Real-Time Reminder Engine v1.0
 
