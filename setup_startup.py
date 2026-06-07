@@ -55,7 +55,7 @@ def add_max_to_windows_startup():
         )
         logger.info(f"Success! MAX has been added to Windows Startup.")
         logger.info(f"Shortcut created at: {shortcut_path}")
-        print("\n[SUCCESS] MAX ab PC startup par successfully add ho gayi hai! 🔥\n")
+        print("\n[SUCCESS] MAX ab PC startup par successfully add ho gayi hai! [SUCCESS]\n")
         return True
     except subprocess.CalledProcessError as e:
         logger.error(f"PowerShell shortcut generation failed: {e.stderr.decode().strip()}")
@@ -64,8 +64,39 @@ def add_max_to_windows_startup():
         logger.error(f"Unexpected error: {e}")
         return False
 
+def remove_max_from_windows_startup():
+    if sys.platform != "win32":
+        logger.error("Platform is not Windows. Startup automation skipped.")
+        return False
+
+    # 1. Windows Startup folder ka path dhoondho
+    app_data = os.environ.get("APPDATA")
+    if not app_data:
+        logger.error("APPDATA environment variable not found.")
+        return False
+        
+    startup_folder = os.path.join(app_data, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+    shortcut_path = os.path.join(startup_folder, "MAX_Assistant.lnk")
+
+    if os.path.exists(shortcut_path):
+        try:
+            os.remove(shortcut_path)
+            logger.info("Successfully removed MAX from Windows Startup.")
+            print("\n[SUCCESS] MAX ko Windows Startup se remove kar diya gaya hai! [REMOVED]\n")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove shortcut: {e}")
+            return False
+    else:
+        logger.info("MAX is not currently registered in Windows Startup.")
+        print("\n[INFO] MAX startup menu mein nahi mili (already removed).\n")
+        return True
+
 if __name__ == "__main__":
     print("=============================================")
-    print("        MAX AI - Startup Installer           ")
+    print("     MAX AI - Startup Installer/Uninstaller  ")
     print("=============================================")
-    add_max_to_windows_startup()
+    if len(sys.argv) > 1 and sys.argv[1] in ["--remove", "-r", "remove"]:
+        remove_max_from_windows_startup()
+    else:
+        add_max_to_windows_startup()
