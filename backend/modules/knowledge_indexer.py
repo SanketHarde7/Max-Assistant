@@ -1,3 +1,5 @@
+# Path: backend/modules/knowledge_indexer.py
+# Use: Indexes new files into the knowledge base.
 """
 knowledge_indexer.py — MAX v4.0
 Keyword indexer for local knowledge base markdown files.
