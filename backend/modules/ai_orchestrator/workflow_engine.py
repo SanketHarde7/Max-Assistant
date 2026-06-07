@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/workflow_engine.py
+# Use: Runs complex multi-step automated workflows.
 # workflow_engine.py — Replay saved multi-step workflows for AI Orchestrator
 import os
 import json
