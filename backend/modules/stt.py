@@ -1,3 +1,5 @@
+# Path: backend/modules/stt.py
+# Use: Transcribes spoken audio input into text format.
 """
 stt.py — MAX v4.2
 Speech-to-Text via Groq Whisper.
