@@ -2,13 +2,16 @@
 title MAX AI Assistant - Master Launcher
 color 0B
 
-echo [1/2] Verifying Python Environment...
+echo [1/2] Verifying Python Environment and Starting Backend...
 cd /d "%~dp0backend"
 if not exist ".venv" (
     python -m venv .venv
 )
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt --quiet --disable-pip-version-check 2>nul
+
+:: Start backend in a separate terminal window
+start "MAX Backend" cmd /k "call .venv\Scripts\activate.bat && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
 echo [2/2] Handing over control to Rust Dictator...
 cd /d "%~dp0max-desktop"
