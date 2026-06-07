@@ -1,3 +1,5 @@
+# Path: backend/config.py
+# Use: Loads configuration settings and system environment variables.
 """
 config.py — MAX v4.0
 Added: Email, SmartHome, Browser, Plugin system configs.
