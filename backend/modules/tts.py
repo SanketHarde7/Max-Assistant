@@ -1,3 +1,5 @@
+# Path: backend/modules/tts.py
+# Use: Converts text responses into spoken voice output.
 """
 tts.py — MAX v4.2
 Text-to-Speech via Edge-TTS (Strictly English).
