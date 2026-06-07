@@ -1,3 +1,5 @@
+# Path: max-desktop/src-tauri/.cargo/config.toml
+# Use: Component file for the Jarvis desktop assistant application.
 # Use GNU toolchain with MinGW-w64 — NO Visual Studio Build Tools needed!
 [build]
 target = "x86_64-pc-windows-gnu"
