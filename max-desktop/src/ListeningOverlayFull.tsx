@@ -1,3 +1,5 @@
+// Path: max-desktop/src/ListeningOverlayFull.tsx
+// Use: Fullscreen voice input overlay for Tauri app.
 import React, { useEffect, useState } from "react";
 import "./ListeningOverlayFull.css";
 
