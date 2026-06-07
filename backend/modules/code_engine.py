@@ -1,3 +1,5 @@
+# Path: backend/modules/code_engine.py
+# Use: Safely executes Python and shell code snippets.
 """
 code_engine.py — MAX v4.0
 Handles: write_code, run_code, code_review, fix_code, project_scaffold
