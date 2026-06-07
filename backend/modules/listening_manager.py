@@ -1,3 +1,5 @@
+# Path: backend/modules/listening_manager.py
+# Use: Coordinates mic recording states and wake words.
 """
 listening_manager.py — MAX-AILE (v2 — Simplified)
 
