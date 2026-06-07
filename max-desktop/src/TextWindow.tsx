@@ -1,3 +1,5 @@
+// Path: max-desktop/src/TextWindow.tsx
+// Use: Text input and output window component UI.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
