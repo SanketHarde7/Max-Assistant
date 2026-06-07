@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/orchestrator.py
+# Use: Coordinates AI model routing and response generation.
 # orchestrator.py — Main entry point for MAX AI Orchestrator System
 import asyncio
 import logging
