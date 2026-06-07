@@ -1,3 +1,5 @@
+# Path: backend/modules/media_control.py
+# Use: Controls system volume, media playback, and keys.
 """
 media_control.py — MAX v4.2
 Controls media playback via OS-level media keys.
