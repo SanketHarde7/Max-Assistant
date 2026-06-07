@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/response_harvester.py
+# Use: Retrieves and structures finalized model outputs.
 # response_harvester.py — Waits for and reads AI assistant responses
 import time
 import logging
