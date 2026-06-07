@@ -1,3 +1,5 @@
+# Path: backend/main_startup_patch.py
+# Use: Applies initialization patches during backend server startup.
 """
 main_startup_patch.py
 =====================
