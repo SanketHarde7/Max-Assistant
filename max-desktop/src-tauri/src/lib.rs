@@ -1,3 +1,5 @@
+// Path: max-desktop/src-tauri/src/lib.rs
+// Use: Tauri backend library containing system commands.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::Command;
