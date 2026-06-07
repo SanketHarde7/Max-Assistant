@@ -1,3 +1,5 @@
+# Path: backend/modules/file_manager.py
+# Use: Handles local file reading, writing, and navigation.
 """
 file_manager.py — MAX v4.0
 Enhanced file management with search, list, read, edit.
