@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/ai_router.py
+# Use: Routes user queries to appropriate AI models.
 # ai_router.py — Smart platform routing logic
 import json
 import re
