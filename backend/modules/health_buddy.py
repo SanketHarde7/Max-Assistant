@@ -1,3 +1,5 @@
+# Path: backend/modules/health_buddy.py
+# Use: Tracks fitness stats, health metrics, and reminders.
 """
 health_buddy.py — MAX v4.8 (Health & Focus Agent — Fixed Idle Detection)
 - Runs a background thread tracking developer screen time.
