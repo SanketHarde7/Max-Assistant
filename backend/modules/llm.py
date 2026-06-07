@@ -262,6 +262,9 @@ SKILLS
 [SKILL:plugin_list]                        — List plugins
 [SKILL:plugin_reload]                      — Reload plugins
 
+─── AI ORCHESTRATOR ───
+[SKILL:ask_ai:platform:prompt]             — Ask AI (chatgpt/claude/gemini/perplexity) using browser automation. Use this when the user specifically asks to run a prompt through one of these platforms, or when complex reasoning/external knowledge is needed that MAX cannot handle natively.
+
 ─── KNOWLEDGE BASE ───
 [SKILL:kb_search:query]                    — Search personal knowledge base
 [SKILL:kb_rebuild]                         — Re-index knowledge/ folder
@@ -286,6 +289,7 @@ DECISION GUIDE
 → User mentions clipboard + link/URL → ALWAYS use [SKILL:open_link:clipboard], NEVER [SKILL:web_open:...]
 → User mentions screen + link/URL → ALWAYS use [SKILL:open_link:screen]
 → User gives a filename + open links → ALWAYS use [SKILL:open_link:file:filename]
+→ Need complex reasoning, code generation, or user asks for ChatGPT/Claude/Gemini/Perplexity? → ask_ai
 
 CONTEXT: {memory_context}
 """
@@ -411,8 +415,12 @@ async def get_acknowledgment(user_text: str) -> str:
             
         resp = await asyncio.wait_for(_execute_with_retry(call), timeout=5.0)
         output = resp.choices[0].message.content.strip().strip('"\'')
-        if not output or output.lower() in ("none", "null", "empty", "empty string"):
+        
+        # Strip asterisks, brackets, and parens to catch variations like *empty string*
+        cleaned = output.replace('*', '').replace('<', '').replace('>', '').replace('(', '').replace(')', '').strip().lower()
+        if not cleaned or cleaned in ("none", "null", "empty", "empty string"):
             return ""
+            
         return output
     except Exception:
         return ""
