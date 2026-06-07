@@ -1,3 +1,5 @@
+# Path: backend/modules/reminder_agent.py
+# Use: Manages task reminders, alerts, and notifications.
 """
 reminder_agent.py — MAX v4.2
 Persistent reminder system.
