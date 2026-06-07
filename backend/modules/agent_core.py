@@ -1,3 +1,5 @@
+# Path: backend/modules/agent_core.py
+# Use: Core router distributing user tasks to agents.
 """
 Agent Core Module — Task Planning & Multi-Step Execution
 Makes MAX truly agentic:
