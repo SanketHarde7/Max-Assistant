@@ -1,3 +1,5 @@
+# Path: backend/modules/Intent_engine.py
+# Use: Classifies user voice inputs into actionable intents.
 """
 intent_engine.py — MAX v4.2
 LLM-based intent classifier — runs BEFORE main response generation.
