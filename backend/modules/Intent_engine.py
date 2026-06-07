@@ -91,6 +91,10 @@ COMMAND — User wants an action performed RIGHT NOW.
   ✓ "clipboard me jo link hai use open karo"
   ✓ "screen pe jo link hai open karo"
   ✓ "open the link inside main.py"
+  ✓ "ask chatgpt to write a python script"
+  ✓ "use claude to summarize this"
+  ✓ "ask gemini"
+  ✓ "perplexity se pucho"
 
 CAPABILITY_QUESTION — User asks if the assistant CAN or IS ABLE TO do something. No action should be taken.
   ✓ "can you play YouTube videos?"
