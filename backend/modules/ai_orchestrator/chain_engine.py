@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/chain_engine.py
+# Use: Manages LLM reasoning steps and execution chains.
 # chain_engine.py — Sequential platform execution for AI Orchestrator
 import logging
 from modules.ai_orchestrator.platform_config import PLATFORMS
