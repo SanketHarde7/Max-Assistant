@@ -1,3 +1,5 @@
+<!-- Path: backend/knowledge/sanket.md -->
+<!-- Use: Component file for the Jarvis desktop assistant application. -->
 # Sanket's Projects & Context
 
 ## About Me
