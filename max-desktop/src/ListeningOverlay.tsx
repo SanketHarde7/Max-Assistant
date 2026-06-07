@@ -1,3 +1,5 @@
+// Path: max-desktop/src/ListeningOverlay.tsx
+// Use: Voice listening overlay window UI for Tauri.
 import React from "react";
 import "./ListeningOverlay.css";
 
