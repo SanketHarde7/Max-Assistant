@@ -1,3 +1,5 @@
+# Path: backend/modules/web_autopilot.py
+# Use: Automates web browsing, searches, and interactions.
 """
 web_autopilot.py — MAX v5.1 (Agentic Browsing & Thread-Safe Engine)
 - Implements Headless & Invisible undetected-chromedriver loops.
