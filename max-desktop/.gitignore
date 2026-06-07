@@ -1,3 +1,5 @@
+# Path: max-desktop/.gitignore
+# Use: Specifies ignored build paths for Tauri project.
 # Logs
 logs
 *.log
