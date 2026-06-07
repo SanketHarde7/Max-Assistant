@@ -1,3 +1,5 @@
+// Path: max-desktop/vite.config.ts
+// Use: Vite configuration settings for Tauri frontend.
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
