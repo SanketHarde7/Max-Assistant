@@ -1,3 +1,5 @@
+# Path: backend/modules/plugin_loader.py
+# Use: Dynamically loads and registers third-party plugins.
 """
 plugin_loader.py — MAX v4.0
 Dynamic plugin system. Zero config auto-loading.
