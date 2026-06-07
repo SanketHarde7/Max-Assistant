@@ -1,3 +1,5 @@
+# Path: backend/modules/ai_orchestrator/platform_config.py
+# Use: Configures supported platform options and API settings.
 # platform_config.py — Platform settings for AI Orchestrator
 from dataclasses import dataclass, field
 from typing import List, Dict
