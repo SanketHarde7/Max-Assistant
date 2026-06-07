@@ -1,3 +1,5 @@
+# Path: backend/modules/media_engine.py
+# Use: Handles voice and audio recording streams.
 """
 media_engine.py — MAX Smart Human-Like Media Engine v1.0
 Intelligent YouTube search with AI intent parsing, semantic reranking,
