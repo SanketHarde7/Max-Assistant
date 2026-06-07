@@ -1,3 +1,5 @@
+# Path: backend/modules/browser_agent.py
+# Use: Automates operations and searches inside web browsers.
 """
 browser_agent.py — MAX v4.0
 Selenium-based browser automation. Zero cost with webdriver-manager.
