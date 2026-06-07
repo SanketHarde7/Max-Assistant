@@ -1,3 +1,5 @@
+// Path: max-desktop/src/hooks/useVoice.ts
+// Use: Controls voice recording within Tauri environment.
 /**
  * useVoice.ts — MAX-AILE v4 (Silero VAD + Barge-In)
  *
