@@ -1,3 +1,5 @@
+# Path: max-desktop/src-tauri/Cargo.toml
+# Use: Rust dependencies and packaging setup for Tauri.
 [package]
 name = "max-desktop"
 version = "0.1.0"
