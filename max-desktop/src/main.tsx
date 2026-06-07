@@ -1,3 +1,5 @@
+// Path: max-desktop/src/main.tsx
+// Use: Entry script rendering Tauri app frontend.
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
