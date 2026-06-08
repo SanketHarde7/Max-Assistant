@@ -8,7 +8,8 @@ if not exist ".venv" (
     python -m venv .venv
 )
 call .venv\Scripts\activate.bat
-pip install -r requirements.txt --quiet --disable-pip-version-check 2>nul
+pip install -r ..\requirements.txt --quiet --disable-pip-version-check 2>nul
+
 
 :: Start backend in a separate terminal window
 start "MAX Backend" cmd /k "call .venv\Scripts\activate.bat && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"

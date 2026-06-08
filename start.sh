@@ -40,7 +40,8 @@ source venv/bin/activate
 
 # Install dependencies
 echo -e "${BLUE}📥 Installing dependencies...${NC}"
-pip install -q -r backend/requirements.txt
+pip install -q -r requirements.txt
+
 
 # Start server
 echo -e "${GREEN}✅ JARVIS v3.0 is ready!${NC}"

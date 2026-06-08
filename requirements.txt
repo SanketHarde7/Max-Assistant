@@ -17,9 +17,13 @@ groq>=0.4.0
 # -- TTS (free, no API key) --
 edge-tts>=6.1.0
 
-# -- Knowledge Base / RAG --   (NEW)
+# -- Knowledge Base / RAG / Parsers --   (NEW)
 chromadb>=0.5.0               # local vector store (no cloud, persistent)
 sentence-transformers>=2.7.0  # all-MiniLM-L6-v2 embeddings (~90MB one-time download)
+pdfminer.six>=20231228        # PDF text extraction
+python-docx>=1.1.0            # DOCX text extraction
+Pillow>=10.0.0                # Image processing/OCR
+
 
 # -- System info --             (NEW)
 psutil>=5.9.8                 # CPU, RAM, disk, battery, processes

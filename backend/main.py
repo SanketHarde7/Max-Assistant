@@ -336,8 +336,14 @@ async def process_voice_request(
         })
 
         # Intercept conversational follow-ups like "Haan", "Open", "Kholo", "Yes"
-        follow_up_words = ["haan", "open", "kholo", "yes", "khol"]
-        is_follow_up = any(word in lower_trans for word in follow_up_words)
+        words_count = len(lower_trans.split())
+        follow_up_phrases = {"haan", "open", "kholo", "yes", "khol", "open it", "haan kholo", "khol do", "khol de", "open this", "yup", "yeah", "sure"}
+        is_follow_up = False
+        if words_count <= 4:
+            if lower_trans in follow_up_phrases:
+                is_follow_up = True
+            elif any(w in lower_trans for w in ["haan", "yes", "yup", "yeah", "sure", "please"]) and any(w in lower_trans for w in ["open", "khol"]):
+                is_follow_up = True
         
         intercepted = False
         if is_follow_up:
@@ -509,8 +515,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # ── Research file follow-up interception (matches voice handler) ──
                     lower_text = user_text.lower().strip()
-                    text_follow_up_words = ["haan", "open", "kholo", "yes", "khol", "open it", "haan kholo"]
-                    is_text_follow_up = any(word in lower_text for word in text_follow_up_words)
+                    words_count = len(lower_text.split())
+                    follow_up_phrases = {"haan", "open", "kholo", "yes", "khol", "open it", "haan kholo", "khol do", "khol de", "open this", "yup", "yeah", "sure"}
+                    is_text_follow_up = False
+                    if words_count <= 4:
+                        if lower_text in follow_up_phrases:
+                            is_text_follow_up = True
+                        elif any(w in lower_text for w in ["haan", "yes", "yup", "yeah", "sure", "please"]) and any(w in lower_text for w in ["open", "khol"]):
+                            is_text_follow_up = True
 
                     text_intercepted = False
                     if is_text_follow_up:
@@ -530,7 +542,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         if latest_file and (_time.time() - os.path.getmtime(latest_file) < 300):
                             logger.info(f"Text follow-up intercepted: Opening latest file: {latest_file}")
-                            skills._skill_open_app(latest_file)
+                            await skills._skill_open_app(latest_file)
                             await websocket.send_json({
                                 "event": "response_text",
                                 "text": f"Opening file: {os.path.basename(latest_file)}"
@@ -540,7 +552,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             from modules.web_autopilot import LAST_BOT_BYPASS_URL, clear_last_bot_bypass_url
                             if LAST_BOT_BYPASS_URL:
                                 logger.info(f"Text follow-up intercepted: Opening bot bypass URL: {LAST_BOT_BYPASS_URL}")
-                                skills._skill_web_open(LAST_BOT_BYPASS_URL)
+                                await skills._skill_web_open(LAST_BOT_BYPASS_URL)
                                 await websocket.send_json({
                                     "event": "response_text",
                                     "text": "Opening blocked website on screen..."

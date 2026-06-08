@@ -261,6 +261,9 @@ class SkillsEngine:
             "kb_stats":          self._skill_kb_stats,
             "research":          self._skill_research,
             "create_file":       self._skill_create_file,
+            # ── AI Orchestrator skills ──────────────────────────────────────
+            "ai_ask":            self._skill_ai_ask,
+            "ai_chain":          self._skill_ai_chain,
         }
         try:
             pl = self.plugin_loader
@@ -311,10 +314,58 @@ class SkillsEngine:
 
         clean_text = re.sub(r' {2,}', ' ', self.SKILL_PATTERN.sub("", response_text)).strip()
 
-        for match in matches:
+        # ── Parallel execution for launch-type skills ──────────────────────
+        # open_app / web_open just fire os.startfile or webbrowser — safe to
+        # run concurrently. Every other skill runs sequentially as before.
+        PARALLEL_SKILLS = {"open_app", "web_open"}
+
+        parallel_matches = [m for m in matches if m.group(1).lower() in PARALLEL_SKILLS]
+        serial_matches   = [m for m in matches if m.group(1).lower() not in PARALLEL_SKILLS]
+
+        async def _run_single_match(match):
             skill_name = match.group(1).lower()
-            params_str = match.group(2) or ""
-            
+            params_str  = match.group(2) or ""
+            if skill_name in ("web_open", "browser_open"):
+                params = [params_str.strip()] if params_str.strip() else []
+            else:
+                params = [p.strip() for p in params_str.split(":") if p.strip()]
+
+            if skill_name not in self.skills_registry:
+                logger.warning(f"Unknown skill: {skill_name}")
+                try:
+                    from modules.skill_forge import get_skill_forge
+                    get_skill_forge(self.config).record_unknown_skill(skill_name, user_request)
+                except Exception as e:
+                    logger.error(f"Failed to record unknown skill in SkillForge: {e}")
+                return None, skill_name, False
+
+            try:
+                logger.info(f"⚙️  Executing {skill_name}({params})")
+                raw    = self.skills_registry[skill_name](*params)
+                result = await raw if asyncio.iscoroutine(raw) else raw
+                return str(result) if result else "", skill_name, skill_name in DATA_SKILLS
+            except Exception as e:
+                import traceback
+                logger.error(f"Skill '{skill_name}' failed: {e}\n{traceback.format_exc()}")
+                return f"Error executing {skill_name}: {e}", skill_name, False
+
+        # Run all open/web skills at the same time
+        if parallel_matches:
+            parallel_results = await asyncio.gather(
+                *[_run_single_match(m) for m in parallel_matches]
+            )
+            for res_str, sname, is_d in parallel_results:
+                if res_str is not None:
+                    results.append(res_str)
+                    tts_results.append(_truncate_for_tts(res_str, sname))
+                    executed_any = True
+                    if is_d:
+                        is_data = True
+
+        # Run everything else serially (data/AI skills have side-effects)
+        for match in serial_matches:
+            skill_name = match.group(1).lower()
+            params_str  = match.group(2) or ""
             if skill_name in ("web_open", "browser_open"):
                 params = [params_str.strip()] if params_str.strip() else []
             else:
@@ -331,14 +382,12 @@ class SkillsEngine:
 
             try:
                 logger.info(f"⚙️  Executing {skill_name}({params})")
-                raw = self.skills_registry[skill_name](*params)
+                raw    = self.skills_registry[skill_name](*params)
                 result = await raw if asyncio.iscoroutine(raw) else raw
                 result_str = str(result) if result else ""
-                
                 results.append(result_str)
                 tts_results.append(_truncate_for_tts(result_str, skill_name))
                 executed_any = True
-                
                 if skill_name in DATA_SKILLS:
                     is_data = True
             except Exception as e:
@@ -850,8 +899,10 @@ class SkillsEngine:
     async def _skill_open_app(self, *args, **kw) -> str:
         if not args:
             return "Which app should I open?"
-            
-        apps_to_open = " ".join(args).split(",")
+
+        # Split by comma OR "and"/"aur" — both are valid list separators in voice commands
+        raw_joined = " ".join(args)
+        apps_to_open = re.split(r",\s*|\s+(?:and|aur)\s+", raw_joined)
         system = platform.system()
         web_map = getattr(self.config, 'WEB_FALLBACK_MAP', {})
         mac_map = getattr(self.config, 'MAC_APP_MAP', {})
@@ -1298,6 +1349,60 @@ class SkillsEngine:
             )
         except Exception as e:
             return f"KB stats failed: {e}"
+
+    # ════════════════════════════════════════════
+    # AI ORCHESTRATOR SKILLS
+    # ════════════════════════════════════════════
+
+    async def _skill_ai_ask(self, *args) -> str:
+        """Send a query to a specific AI platform via the orchestrator.
+        Usage: [SKILL:ai_ask:chatgpt:Write me a Python sort function]
+               [SKILL:ai_ask:gemini:Explain async/await]
+        First arg = platform name, rest = the query.
+        """
+        if not args:
+            return "Which platform and query? Usage: ai_ask:platform:your question"
+
+        platform = args[0].strip().lower()
+        query    = " ".join(args[1:]).strip()
+
+        if not query:
+            return f"What should I ask {platform}?"
+
+        try:
+            from modules.ai_orchestrator.orchestrator import get_orchestrator
+            orchestrator = get_orchestrator(self.config)
+            logger.info(f"ai_ask → platform={platform!r}, query={query[:80]!r}")
+            result = await orchestrator.ask_ai(platform, query)
+            return result
+        except Exception as e:
+            logger.error(f"ai_ask skill failed: {e}", exc_info=True)
+            return f"Could not reach {platform}: {e}"
+
+    async def _skill_ai_chain(self, *args) -> str:
+        """Chain two AI platforms: p1 answers, its response is fed to p2 as context.
+        Usage: [SKILL:ai_chain:chatgpt:gemini:Write a login page in React]
+        First arg = source platform, second = refine platform, rest = query.
+        """
+        if len(args) < 3:
+            return "Usage: ai_chain:platform1:platform2:your query"
+
+        p1    = args[0].strip().lower()
+        p2    = args[1].strip().lower()
+        query = " ".join(args[2:]).strip()
+
+        if not query:
+            return f"What task should I chain between {p1} and {p2}?"
+
+        try:
+            from modules.ai_orchestrator.orchestrator import get_orchestrator
+            orchestrator = get_orchestrator(self.config)
+            logger.info(f"ai_chain → {p1} ➜ {p2}, query={query[:80]!r}")
+            result = await orchestrator.chain_ai(p1, p2, query)
+            return result
+        except Exception as e:
+            logger.error(f"ai_chain skill failed: {e}", exc_info=True)
+            return f"Chain between {p1} and {p2} failed: {e}"
 
     # ════════════════════════════════════════════
     # RESEARCH SKILL (Bridge to WebAutopilot)
