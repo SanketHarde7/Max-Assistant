@@ -7,6 +7,7 @@ from urllib.parse import quote_plus
 import re
 import os
 import time
+import json
 import asyncio
 import threading
 import subprocess
@@ -16,7 +17,10 @@ import webbrowser
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
+from modules.action_scheduler import ActionScheduler
 from typing import Dict, Any, Optional
+from modules.ai_orchestrator.research_agent import DeepResearchAgent
+from config import Config       
 
 logger = logging.getLogger("MAX.SKILLS")
 
@@ -129,6 +133,8 @@ class SkillsEngine:
         self._pending_links  = []
         self.skills_registry = self._register_skills()
         self._load_plugins()
+        self.scheduler = ActionScheduler(self.config, self)
+        self.scheduler.start()
 
     # ── Lazy properties ──────────────────────────────────────
 
@@ -259,8 +265,9 @@ class SkillsEngine:
             "kb_rebuild":        self._skill_kb_rebuild,
             "kb_list":           self._skill_kb_list,
             "kb_stats":          self._skill_kb_stats,
-            "research":          self._skill_research,
+            "deep_research":     self._skill_deep_research,
             "create_file":       self._skill_create_file,
+            "schedule_action":   self._skill_schedule_action,
             # ── AI Orchestrator skills ──────────────────────────────────────
             "ai_ask":            self._skill_ai_ask,
             "ai_chain":          self._skill_ai_chain,
@@ -272,6 +279,41 @@ class SkillsEngine:
         except Exception:
             pass
         return base
+    def _parse_parameters(self, skill_name: str, params_str: str) -> list:
+        skill_name = skill_name.lower().strip()
+        params_str = params_str.strip()
+        if not params_str:
+            return []
+            
+        SINGLE_TEXT_SKILLS = {
+            "search", "web_search", "youtube_play", "youtube_search", 
+            "type_text", "kb_search", "research", "web_open", "browser_open"
+        }
+        if skill_name in SINGLE_TEXT_SKILLS:
+            return [params_str]
+            
+        # Try to resolve parameter count from function signature
+        if skill_name in self.skills_registry:
+            func = self.skills_registry[skill_name]
+            try:
+                import inspect
+                sig = inspect.signature(func)
+                params_count = 0
+                has_var_positional = False
+                for param in sig.parameters.values():
+                    if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+                        params_count += 1
+                    elif param.kind == inspect.Parameter.VAR_POSITIONAL:
+                        has_var_positional = True
+                
+                if params_count > 0 and not has_var_positional:
+                    parts = params_str.split(":", params_count - 1)
+                    return [p.strip() for p in parts]
+            except Exception as e:
+                logger.warning(f"Failed to inspect signature for {skill_name}: {e}")
+                
+        # Fallback to standard colon splitting
+        return [p.strip() for p in params_str.split(":") if p.strip()]
 
     # ════════════════════════════════════════════
     # DISPATCHER (MULTI-SKILL SUPPORT)
@@ -325,10 +367,7 @@ class SkillsEngine:
         async def _run_single_match(match):
             skill_name = match.group(1).lower()
             params_str  = match.group(2) or ""
-            if skill_name in ("web_open", "browser_open"):
-                params = [params_str.strip()] if params_str.strip() else []
-            else:
-                params = [p.strip() for p in params_str.split(":") if p.strip()]
+            params = self._parse_parameters(skill_name, params_str)
 
             if skill_name not in self.skills_registry:
                 logger.warning(f"Unknown skill: {skill_name}")
@@ -341,8 +380,12 @@ class SkillsEngine:
 
             try:
                 logger.info(f"⚙️  Executing {skill_name}({params})")
-                raw    = self.skills_registry[skill_name](*params)
-                result = await raw if asyncio.iscoroutine(raw) else raw
+                func = self.skills_registry[skill_name]
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(*params)
+                else:
+                    # Run sync skill in a separate thread to keep the event loop non-blocking
+                    result = await asyncio.to_thread(func, *params)
                 return str(result) if result else "", skill_name, skill_name in DATA_SKILLS
             except Exception as e:
                 import traceback
@@ -366,10 +409,7 @@ class SkillsEngine:
         for match in serial_matches:
             skill_name = match.group(1).lower()
             params_str  = match.group(2) or ""
-            if skill_name in ("web_open", "browser_open"):
-                params = [params_str.strip()] if params_str.strip() else []
-            else:
-                params = [p.strip() for p in params_str.split(":") if p.strip()]
+            params = self._parse_parameters(skill_name, params_str)
 
             if skill_name not in self.skills_registry:
                 logger.warning(f"Unknown skill: {skill_name}")
@@ -382,8 +422,12 @@ class SkillsEngine:
 
             try:
                 logger.info(f"⚙️  Executing {skill_name}({params})")
-                raw    = self.skills_registry[skill_name](*params)
-                result = await raw if asyncio.iscoroutine(raw) else raw
+                func = self.skills_registry[skill_name]
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(*params)
+                else:
+                    # Run sync skill in a separate thread to keep the event loop non-blocking
+                    result = await asyncio.to_thread(func, *params)
                 result_str = str(result) if result else ""
                 results.append(result_str)
                 tts_results.append(_truncate_for_tts(result_str, skill_name))
@@ -504,8 +548,46 @@ class SkillsEngine:
                 r = c.get(url, headers={"User-Agent": "curl/7.68.0"})
                 return r.text.strip() if r.status_code == 200 else f"Weather unavailable for {city}."
         except Exception:
-            return "Could not reach weather server."
+           return "Could not reach weather server."
+    
+    
+    def _skill_schedule_action(self, date_str: str, time_str: str, skill_name: str, *params) -> str:
+        execute_at = f"{date_str.strip()} {time_str.strip()}"
+        return self.scheduler.add_task(execute_at, skill_name, list(params))
 
+
+    def _skill_deep_research(self, topic: str = "", ai_platform: str = "gemini") -> str:
+        """
+        Executes a deep autonomous research on a given topic using the specified AI platform.
+        Usage from intent: [SKILL:deep_research:Black Holes:gemini]
+        """
+        if not topic:
+            return "Please provide a topic for research."
+
+        topic = topic.strip()
+        ai_platform = ai_platform.strip().lower()
+        
+        try:
+            from modules.ai_orchestrator.research_agent import DeepResearchAgent
+            
+            logger = logging.getLogger("MAX.SKILLS.DEEP_RESEARCH")
+            logger.info(f"Triggering Deep Research Agent for topic: '{topic}' via {ai_platform}")
+            
+            # Use existing class config instead of creating a new one
+            research_agent = DeepResearchAgent(self.config)
+            
+            # Run the autonomous process
+            research_agent.run_research(topic=topic, urls_to_crawl=[], ai_platform=ai_platform)
+            
+            # Final TTS success message
+            success_message = f"Sir, the deep research on {topic} is complete. The formatted report has been generated and saved to the Jarvis Generated Research folder on your desktop."
+            return success_message
+
+        except Exception as e:
+            logger.error(f"Deep Research Skill Failed: {e}")
+            return f"Sorry sir, I encountered an error while researching {topic}. Please check the system logs."
+    
+    
     def _skill_web_search(self, *args) -> str:
         import httpx
         query = " ".join(args).strip()
@@ -1198,17 +1280,94 @@ class SkillsEngine:
         return await media_engine.play_media(query)
         
     def _skill_whatsapp_message(self, contact: str = "", message: str = "", **kw) -> str:
-        if not PYWHATKIT_AVAILABLE: 
-            return "WhatsApp needs: pip install pywhatkit"
+        if not PYAUTOGUI_AVAILABLE: 
+            return "Typing needs: pip install pyautogui"
         if not contact: 
-            return "Provide contact number (+91 format)."
+            return "Provide a contact name or number."
         if not message: 
             return "What message should I send?"
+            
+        contact_clean = contact.strip().lower()
+        
+        # Check if the input is a direct phone number (contains digits)
+        is_number = bool(re.match(r'^[\+\d\s\-]+$', contact_clean))
+        
+        if not is_number:
+            # It's a name! Let's look it up in contacts.json
+            contacts_file = Path(self.config.DATA_DIR) / "contacts.json"
+            
+            if contacts_file.exists():
+                try:
+                    contacts_dict = json.loads(contacts_file.read_text(encoding='utf-8'))
+                    # Dictionary lookup (case-insensitive)
+                    resolved_number = contacts_dict.get(contact_clean)
+                    
+                    if resolved_number:
+                        contact = resolved_number
+                    else:
+                        return f"Sir, I don't have '{contact.title()}' saved in my contacts. Please update the contacts file."
+                except Exception as e:
+                    logger.error(f"Failed to read contacts JSON: {e}")
+                    return "There is an error in reading the contacts file."
+            else:
+                # Create a template file if it doesn't exist
+                template = {
+                    "aditya": "+919022306582",
+                    "papa": "+919022306582",
+                    "me": "+919022306582"
+                }
+                contacts_file.write_text(json.dumps(template, indent=4), encoding='utf-8')
+                return f"Sir, the contacts file was missing so I created one. Please add '{contact.title()}'s number to it."
+
+        # Cleanup the number format before sending
+        contact = contact.replace(" ", "").replace("-", "")
         if not contact.startswith("+"): 
-            contact = "+" + contact
+            # Defaulting to India (+91) if user just says a 10-digit number
+            contact = "+91" + contact 
+            
         try:
-            pywhatkit.sendwhatmsg_instantly(phone_no=contact, message=message, wait_time=15, tab_close=True, close_time=3)
-            return "WhatsApp message sent."
+            logger.info(f"Sending WhatsApp message to {contact}...")
+            
+            import webbrowser
+            from urllib.parse import quote
+            
+            url = f"https://web.whatsapp.com/send?phone={contact}&text={quote(message)}"
+            logger.info(f"Opening browser: {url}")
+            webbrowser.open(url)
+            
+            # Wait for WhatsApp Web page to load (default 15 seconds)
+            wait_time = 15
+            logger.info(f"Waiting {wait_time} seconds for page to load...")
+            time.sleep(wait_time)
+            
+            # Try focusing browser/whatsapp window
+            try:
+                import pygetwindow as gw
+                windows = [w for w in gw.getAllWindows() if "whatsapp" in w.title.lower()]
+                if not windows:
+                    browser_keywords = ["chrome", "edge", "opera", "firefox", "brave", "browser"]
+                    windows = [w for w in gw.getAllWindows() if any(kw in w.title.lower() for kw in browser_keywords)]
+                if windows:
+                    logger.info(f"Bringing window to focus: {windows[0].title}")
+                    windows[0].activate()
+                    time.sleep(0.5)
+            except Exception as win_err:
+                logger.warning(f"Could not focus browser window: {win_err}")
+                
+            # Press enter to send the message
+            import pyautogui
+            logger.info("Pressing Enter to send message...")
+            pyautogui.press("enter")
+            
+            # Wait a few seconds before closing to let message send (increased from 3 to 5 seconds)
+            close_time = 5
+            logger.info(f"Waiting {close_time} seconds for transmission...")
+            time.sleep(close_time)
+            
+            logger.info("Closing WhatsApp Web tab...")
+            pyautogui.hotkey("ctrl", "w")
+            
+            return f"WhatsApp message successfully sent to {contact_clean.title()}."
         except Exception as e:
             return f"WhatsApp failed: {e}"
 
@@ -1259,10 +1418,10 @@ class SkillsEngine:
     def _skill_calendar_week(self, *args): 
         return self.calendar_agent.week()
 
-    def _skill_calendar_add(self, *args):
-        if len(args) < 2: 
+    def _skill_calendar_add(self, title: str = "", date: str = "", time: str = ""):
+        if not title or not date: 
             return "Usage: calendar_add:title:YYYY-MM-DD:HH:MM"
-        return self.calendar_agent.add_event(args[0], args[1], args[2] if len(args) > 2 else "")
+        return self.calendar_agent.add_event(title, date, time)
 
     def _skill_browser_open(self, *args): 
         return self.browser_agent.open_url(args[0] if args else "")
