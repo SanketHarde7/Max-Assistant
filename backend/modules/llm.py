@@ -175,7 +175,12 @@ SKILL TAG FORMAT
 - Use EXACT format: [SKILL:skill_name:param1:param2]
 - Multiple skills: [SKILL:skill1:params] [SKILL:skill2:params]
 - Never nest skill tags inside each other.
-- Valid skills: search, weather, youtube_play, web_open, open_app, timer, note, write_code, run_code, read_screen, screenshot, volume, brightness, system_shutdown, system_restart, clipboard, lock_pc, browser_open, browser_scrape, email_send, email_check, calendar_today, calendar_add, fan, smart_light, smart_ac, reminder_set, reminder_list, kb_search, kb_rebuild, research, create_file, media, open_link, open_link_select, find_and_explain, list_files, read_file, edit_file, search_files, list_windows, list_apps, sysinfo, time_now, date_today, screenshot, screen_record, plugin_list, plugin_reload, clear_memory, add_rule, project_scaffold, code_review, fix_code, type_text, whatsapp_message, quit_max, ai_ask, ai_chain
+- Valid skills: search, weather, youtube_play, web_open, open_app, timer, note, write_code, run_code, read_screen, 
+screenshot, volume, brightness, system_shutdown, system_restart, clipboard, lock_pc, browser_open, browser_scrape, email_send,
+email_check, calendar_today, calendar_add, fan, smart_light, smart_ac, reminder_set, reminder_list, kb_search,
+kb_rebuild, research, create_file, media, open_link, open_link_select, find_and_explain, list_files, read_file, edit_file,
+search_files, list_windows, list_apps, sysinfo, time_now, date_today, screenshot, screen_record, plugin_list, plugin_reload, clear_memory, 
+add_rule, project_scaffold, code_review, fix_code, type_text, whatsapp_message, quit_max, ai_ask, ai_chain,do research
 
 DECISION GUIDE
 - Real-time data? -> search
@@ -190,6 +195,21 @@ DECISION GUIDE
 - Clipboard + link/URL -> [SKILL:open_link:clipboard]
 - Screen + link/URL -> [SKILL:open_link:screen]
 - User seems frustrated? -> reply directly, be calm and helpful
+- "Send WhatsApp message" -> ALWAYS use format: [SKILL:whatsapp_message:<Contact_Name>:<Message>]
+  CRITICAL: The contact name MUST be the first parameter, and the message MUST be the second parameter.
+  Example: "Send hi to Aditya" -> [SKILL:whatsapp_message:Aditya:hi]
+  
+-important :Rule: If the user explicitly asks to conduct 'deep research', 'create a research report', or 'study a topic deeply',
+you MUST trigger the deep_research skill. Format: [SKILL:deep_research:<topic_name>:<ai_platform>] (ai_platform is optional, defaults to gemini).
+
+- Schedule a task/action -> [SKILL:schedule_action:YYYY-MM-DD:HH:MM:<skill_name>:<param1>:<param2>...]
+  CRITICAL: Time MUST be in 24-hour format. Use the correct skill_name for the action.
+  Example 1: "Schedule research on tokenizers for tomorrow at 10 AM"
+  -> [SKILL:schedule_action:2026-06-10:10:00:deep_research:tokenizers:gemini]
+  Example 2: "Send WhatsApp to Aditya tonight at 8 PM saying script is ready"
+  -> [SKILL:schedule_action:2026-06-09:20:00:whatsapp_message:Aditya:script is ready]
+
+  
 - "Ask ChatGPT / Gemini / Copilot to X" -> [SKILL:ai_ask:chatgpt:X]
   Examples:
     "ChatGPT se React component banwao" -> [SKILL:ai_ask:chatgpt:Write a React login component]
