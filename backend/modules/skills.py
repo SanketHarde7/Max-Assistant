@@ -14,6 +14,7 @@ import subprocess
 import logging
 import platform
 import webbrowser
+from modules.voice_engine import VoiceEngine
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -135,6 +136,7 @@ class SkillsEngine:
         self._load_plugins()
         self.scheduler = ActionScheduler(self.config, self)
         self.scheduler.start()
+        VoiceEngine.get_instance()
 
     # ── Lazy properties ──────────────────────────────────────
 
