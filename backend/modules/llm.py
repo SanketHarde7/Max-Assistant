@@ -392,7 +392,7 @@ async def get_response_with_skill_result(user_text: str, skill_result_text: str,
         prompt = SKILL_SUMMARY_PROMPT.replace("{user_text}", user_text).replace("{skill_result}", skill_result_text[:1000])
 
         async def call():
-            client = get_client()
+            client = await get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
                 messages=[
