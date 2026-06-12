@@ -32,7 +32,7 @@ import re
 from enum import Enum
 from typing import Dict, Optional
 from dataclasses import dataclass, field
-from api_utils import execute_with_retry
+from api_utils import execute_with_retry, key_pool
 
 logger = logging.getLogger("MAX.INTENT")
 
@@ -258,7 +258,7 @@ class IntentEngine:
         prompt = _PROMPT.replace("{text}", text.strip())
 
         async def call():
-            key = self.config.get_active_api_key()
+            key = await key_pool.lease_key()
             if not key:
                 raise ValueError("No API key available")
             client = AsyncGroq(api_key=key)
