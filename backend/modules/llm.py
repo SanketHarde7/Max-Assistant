@@ -14,13 +14,14 @@ import base64
 import os
 from groq import AsyncGroq
 from config import config
-from api_utils import execute_with_retry
+from api_utils import execute_with_retry, key_pool, response_cache, make_cache_key
 
 logger = logging.getLogger("MAX.LLM")
 
 
-def get_client() -> AsyncGroq:
-    key = config.get_active_api_key()
+async def get_client() -> AsyncGroq:
+    """Lease the least-loaded, non-rate-limited Groq key from the smart pool."""
+    key = await key_pool.lease_key()
     if not key:
         raise ValueError("No GROQ_API_KEY in .env")
     return AsyncGroq(api_key=key)
