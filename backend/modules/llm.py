@@ -375,7 +375,9 @@ async def get_response(user_text: str, memory_context: str = "", allow_skills: b
                     clean = clean.replace(s, "")
                 clean = re.sub(r' {2,}', ' ', clean).strip()
 
-        return {"response": clean, "skill": skill_str}
+        result = {"response": clean, "skill": skill_str}
+        response_cache.set(cache_id, result)
+        return result
 
     except asyncio.TimeoutError:
         return {"response": "Taking too long. Try again?", "skill": None}
