@@ -19,7 +19,7 @@ from io import BytesIO
 from typing import Union
 from groq import AsyncGroq
 from config import config
-from api_utils import execute_with_retry
+from api_utils import execute_with_retry, key_pool
 
 logger = logging.getLogger("MAX.STT")
 
@@ -116,7 +116,7 @@ async def transcribe_audio(
             kwargs["language"] = language
 
         async def call():
-            client = AsyncGroq(api_key=config.get_active_api_key())
+            client = AsyncGroq(api_key=await key_pool.lease_key())
             resp = await client.audio.transcriptions.create(**kwargs)
             return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
 
@@ -160,7 +160,7 @@ async def transcribe_file(
             kwargs["language"] = language
 
         async def call():
-            client = AsyncGroq(api_key=config.get_active_api_key())
+            client = AsyncGroq(api_key=await key_pool.lease_key())
             resp = await client.audio.transcriptions.create(**kwargs)
             return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
 

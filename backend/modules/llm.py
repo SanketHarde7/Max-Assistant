@@ -14,13 +14,14 @@ import base64
 import os
 from groq import AsyncGroq
 from config import config
-from api_utils import execute_with_retry
+from api_utils import execute_with_retry, key_pool, response_cache, make_cache_key
 
 logger = logging.getLogger("MAX.LLM")
 
 
-def get_client() -> AsyncGroq:
-    key = config.get_active_api_key()
+async def get_client() -> AsyncGroq:
+    """Lease the least-loaded, non-rate-limited Groq key from the smart pool."""
+    key = await key_pool.lease_key()
     if not key:
         raise ValueError("No GROQ_API_KEY in .env")
     return AsyncGroq(api_key=key)
@@ -315,13 +316,23 @@ async def get_response(user_text: str, memory_context: str = "", allow_skills: b
     Increased token limit for better responses.
     """
     try:
+        # Short-TTL dedupe cache — rapid duplicate triggers reuse the same result
+        # instead of burning another Groq request.
+        cache_id = make_cache_key(
+            "resp", user_text.strip(), str(allow_skills), (memory_context or "")[:300]
+        )
+        cached = response_cache.get(cache_id)
+        if cached is not None:
+            logger.info("⚡ Cache hit — skipped one Groq request.")
+            return cached
+
         if allow_skills:
             system_prompt = SYSTEM_PROMPT_SKILLS.replace("{memory_context}", memory_context or "None")
         else:
             system_prompt = SYSTEM_PROMPT_CONVERSATION.replace("{memory_context}", memory_context or "None")
 
         async def call():
-            client = get_client()
+            client = await get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
                 messages=[
@@ -364,7 +375,9 @@ async def get_response(user_text: str, memory_context: str = "", allow_skills: b
                     clean = clean.replace(s, "")
                 clean = re.sub(r' {2,}', ' ', clean).strip()
 
-        return {"response": clean, "skill": skill_str}
+        result = {"response": clean, "skill": skill_str}
+        response_cache.set(cache_id, result)
+        return result
 
     except asyncio.TimeoutError:
         return {"response": "Taking too long. Try again?", "skill": None}
@@ -379,7 +392,7 @@ async def get_response_with_skill_result(user_text: str, skill_result_text: str,
         prompt = SKILL_SUMMARY_PROMPT.replace("{user_text}", user_text).replace("{skill_result}", skill_result_text[:1000])
 
         async def call():
-            client = get_client()
+            client = await get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
                 messages=[
@@ -412,8 +425,6 @@ async def analyze_image_with_prompt(image_path: str, user_prompt: str) -> str:
     Improved error handling and retry.
     """
     try:
-        client = get_client()
-        
         # Check file size
         file_size = os.path.getsize(image_path)
         if file_size > 10 * 1024 * 1024:  # 10MB limit
@@ -429,6 +440,7 @@ async def analyze_image_with_prompt(image_path: str, user_prompt: str) -> str:
             b64 = base64.b64encode(f.read()).decode("utf-8")
 
         async def call():
+            client = await get_client()
             return await client.chat.completions.create(
                 model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=[{"role": "user", "content": [
