@@ -14,6 +14,7 @@ from modules.tts import generate_tts
 from modules.gatekeeper import get_gatekeeper
 from modules.Intent_engine import get_intent_engine
 from modules.listening_manager import ListeningManager
+from modules.agent_loop import get_agent_loop, is_complex_goal
 
 logger = logging.getLogger("MAX.AGENT")
 
@@ -88,6 +89,17 @@ class MaxAgent:
                 return  
         except Exception as e:
             logger.debug(f"Ack dispatch failed: {e}")
+
+    async def _send_event_via_websocket(self, payload: dict):
+        """Push an additive event (plan_update etc.) to the client. Never raises."""
+        global _active_websocket
+        ws = _active_websocket
+        if not ws:
+            return
+        try:
+            await ws.send_json(payload)
+        except Exception as e:
+            logger.debug(f"Event send failed: {e}")
 
     async def process_text_input(self, text: str, use_tts: bool = True, input_source: str = "unknown") -> Dict[str, Any]:
         print(f"\n🟢 [TRACKER: 1] Pipeline started! Input: '{text}' | Source: {input_source}")
@@ -186,6 +198,43 @@ class MaxAgent:
             print("🟢 [TRACKER: 7] Checking Intent...")
             intent = await self.intent_engine.classify(text)
             allow_skills = intent.should_execute_skill
+
+            # 🤖 AGENT LOOP — multi-step goals get planned & executed autonomously
+            if allow_skills and is_complex_goal(text):
+                print("🟢 [TRACKER: 7.5] Complex goal detected → Agent Loop engaged.")
+                try:
+                    try:
+                        ack = await asyncio.wait_for(get_acknowledgment(text), timeout=1.0)
+                        if ack:
+                            asyncio.create_task(self._send_ack_via_websocket(ack, use_tts))
+                    except Exception:
+                        pass
+
+                    loop_result = await get_agent_loop(self.config, self.skills).run(
+                        text, combined_context, self._send_event_via_websocket
+                    )
+                    final_response = self.gatekeeper.filter(loop_result["response"])
+                    await self.memory.add_message("assistant", final_response)
+                    await self.memory.save_memory()
+
+                    tts_path = ""
+                    if use_tts and final_response:
+                        try:
+                            tts_text = self.gatekeeper.filter_for_tts(final_response)
+                            tts_path = await asyncio.wait_for(generate_tts(tts_text), timeout=15.0)
+                        except Exception as e:
+                            print(f"🔴 [TRACKER: ERROR] TTS Crashed: {e}")
+
+                    print("🟢 [TRACKER: 7.9] Agent Loop complete. Returning to main.")
+                    return {
+                        "response": final_response,
+                        "tts_path": tts_path,
+                        "skill_used": loop_result.get("skills_used"),
+                        "intent": "agent_loop",
+                    }
+                except Exception as e:
+                    logger.error(f"Agent loop failed — falling back to single-shot: {e}", exc_info=True)
+                    print(f"🔴 [TRACKER: 7.5 ERROR] Agent Loop failed ({e}). Using normal path.")
 
             print("🟢 [TRACKER: 8] Acknowledgment & LLM Call...")
             ack_task = None
