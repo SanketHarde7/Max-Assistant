@@ -425,8 +425,6 @@ async def analyze_image_with_prompt(image_path: str, user_prompt: str) -> str:
     Improved error handling and retry.
     """
     try:
-        client = get_client()
-        
         # Check file size
         file_size = os.path.getsize(image_path)
         if file_size > 10 * 1024 * 1024:  # 10MB limit
@@ -442,6 +440,7 @@ async def analyze_image_with_prompt(image_path: str, user_prompt: str) -> str:
             b64 = base64.b64encode(f.read()).decode("utf-8")
 
         async def call():
+            client = await get_client()
             return await client.chat.completions.create(
                 model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=[{"role": "user", "content": [
