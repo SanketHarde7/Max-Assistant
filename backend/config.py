@@ -90,6 +90,15 @@ class Config:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "whisper-large-v3")
     VISION_MODEL: str = os.getenv("VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+
+    # ── Groq Rate-Limit Manager ──
+    # Free tier ≈ 30 requests/min per key → keep a small safety margin.
+    GROQ_RPM_PER_KEY: int = int(os.getenv("GROQ_RPM_PER_KEY", "28"))
+    # Max simultaneous Groq calls across the whole app (prevents burst 429s).
+    GROQ_MAX_CONCURRENT: int = int(os.getenv("GROQ_MAX_CONCURRENT", "4"))
+    # Seconds to cache identical LLM responses (dedupes double STT triggers).
+    GROQ_CACHE_TTL: float = float(os.getenv("GROQ_CACHE_TTL", "15"))
+
     # ── Agent Settings ──
     AGENT_MAX_STEPS: int = int(os.getenv("AGENT_MAX_STEPS", "10"))
     AGENT_CODE_TIMEOUT: int = int(os.getenv("AGENT_CODE_TIMEOUT", "30"))
