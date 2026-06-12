@@ -20,6 +20,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 
 from groq import AsyncGroq
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.AGENT")
 
@@ -112,7 +113,6 @@ If request is simple (1 step), just return 1 step.
 
     def __init__(self, config):
         self.config = config
-        self.client = AsyncGroq(api_key=config.GROQ_API_KEY)
         self.max_steps = config.AGENT_MAX_STEPS
 
     async def create_plan(self, user_request: str) -> TaskPlan:
@@ -244,12 +244,16 @@ If request is simple (1 step), just return 1 step.
         """Get plan from LLM."""
         prompt = self.PLANNING_PROMPT.replace("{request}", request)
 
-        response = await self.client.chat.completions.create(
-            model=self.config.LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=500,
-        )
+        async def call():
+            client = AsyncGroq(api_key=self.config.get_active_api_key())
+            return await client.chat.completions.create(
+                model=self.config.LLM_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=500,
+            )
+
+        response = await execute_with_retry(call)
         return response.choices[0].message.content.strip()
 
     def _parse_plan(self, plan_text: str) -> List[TaskStep]:

@@ -19,9 +19,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from modules.action_scheduler import ActionScheduler
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from modules.ai_orchestrator.research_agent import DeepResearchAgent
 from config import Config       
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.SKILLS")
 
@@ -1649,9 +1650,6 @@ class SkillsEngine:
             filename += '.txt'
 
         try:
-            from groq import AsyncGroq
-            client = AsyncGroq(api_key=self.config.get_active_api_key())
-
             prompt = f"""Write a detailed, well-structured document about: {topic}
 
 Rules:
@@ -1664,12 +1662,17 @@ Rules:
 - Organize information logically with clear section headers
 - Write in English"""
 
-            response = await client.chat.completions.create(
-                model=self.config.LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.6,
-                max_tokens=2500,
-            )
+            async def call():
+                from groq import AsyncGroq
+                client = AsyncGroq(api_key=self.config.get_active_api_key())
+                return await client.chat.completions.create(
+                    model=self.config.LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.6,
+                    max_tokens=2500,
+                )
+
+            response = await execute_with_retry(call)
             content = response.choices[0].message.content.strip()
 
             # Save to CODE_SAVE_DIR (where MAX saves generated files)

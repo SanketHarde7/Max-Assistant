@@ -3,6 +3,7 @@
 # chain_engine.py — Sequential platform execution for AI Orchestrator
 import logging
 from modules.ai_orchestrator.platform_config import PLATFORMS
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.ORCHESTRATOR.CHAIN")
 
@@ -12,20 +13,22 @@ class ChainEngine:
 
     async def summarize_response(self, text: str, max_chars: int) -> str:
         try:
-            from groq import AsyncGroq
-            key = self.orchestrator.config.get_active_api_key()
-            if not key:
-                return text[:max_chars]
-            
-            client = AsyncGroq(api_key=key)
             prompt = f"Summarize the following text so that it fits within {max_chars} characters while retaining all critical technical details and structures:\n\n{text}"
-            
-            resp = await client.chat.completions.create(
-                model=self.orchestrator.config.LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=2000,
-            )
+
+            async def call():
+                from groq import AsyncGroq
+                key = self.orchestrator.config.get_active_api_key()
+                if not key:
+                    raise ValueError("No API key")
+                client = AsyncGroq(api_key=key)
+                return await client.chat.completions.create(
+                    model=self.orchestrator.config.LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=2000,
+                )
+
+            resp = await execute_with_retry(call)
             return resp.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"Failed to summarize chain output: {e}")

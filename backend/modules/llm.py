@@ -14,6 +14,7 @@ import base64
 import os
 from groq import AsyncGroq
 from config import config
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.LLM")
 
@@ -23,42 +24,6 @@ def get_client() -> AsyncGroq:
     if not key:
         raise ValueError("No GROQ_API_KEY in .env")
     return AsyncGroq(api_key=key)
-
-
-async def _execute_with_retry(api_call_func, max_retries=3):
-    """Execute API call with exponential backoff retry for various errors."""
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            return await api_call_func()
-        except Exception as e:
-            last_error = e
-            error_str = str(e).lower()
-            
-            # Rate limit - rotate key and retry immediately
-            if "429" in str(e) or "rate limit" in error_str:
-                if config.rotate_api_key():
-                    logger.info(f"Rate limit — rotated key, retrying (attempt {attempt+1}/{max_retries})")
-                    continue
-            
-            # Server errors - retry with backoff
-            if any(code in str(e) for code in ["500", "502", "503", "504"]):
-                wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4 seconds
-                logger.warning(f"Server error {e}, retrying in {wait_time}s (attempt {attempt+1}/{max_retries})")
-                await asyncio.sleep(wait_time)
-                continue
-            
-            # Timeout - retry with backoff
-            if "timeout" in error_str:
-                wait_time = 2 ** attempt
-                logger.warning(f"Timeout, retrying in {wait_time}s (attempt {attempt+1}/{max_retries})")
-                await asyncio.sleep(wait_time)
-                continue
-            
-            # Other errors - don't retry
-            raise e
-    
-    raise last_error
 
 
 # ═══════════════════════════════════════════════════════
@@ -218,7 +183,7 @@ you MUST trigger the deep_research skill. Format: [SKILL:deep_research:<topic_na
   Examples:
     "ChatGPT se X ka code likhwao, phir Gemini se optimize karwao" -> [SKILL:ai_chain:chatgpt:gemini:Write X code then optimize it]
     "Get ChatGPT to write the code and use Gemini to review it" -> [SKILL:ai_chain:chatgpt:gemini:Write and review code for X]
-- ai_ask platforms: chatgpt, gemini, copilot, claude, perplexity (use lowercase)
+- ai_ask platforms: chatgpt, gemini, copilot, claude(if listen cloud then trigger claude as a platform), perplexity (use lowercase)
 
 CONTEXT: {memory_context}"""
 
@@ -275,7 +240,7 @@ Don't start with "I". Don't say "The result shows..." — just say what happened
 # Dynamic greeting pool
 GREETINGS_POOL = [
     "Max is here.",
-    "Hey Sanket, what's up?",
+    "Hey , what's up?",
     "I'm around. What do you need?",
     "Ready when you are.",
     "Hey, what are we working on?",
@@ -285,80 +250,59 @@ GREETINGS_POOL = [
     "Hey! Let's get something done.",
     "I'm listening. What's up?",
     "Ready to roll. What do you need?",
-    "Hey Sanket, shoot.",
+    "Hi ,what can i do for you ?",
 ]
 
 
 async def get_acknowledgment(user_text: str) -> str:
     """
-    Fast pre-call intent classifier. Returns a short human-like micro-reaction.
-    Uses a lighter model call with shorter timeout.
+    100% LOCAL & WISE Acknowledgment Engine (Zero API Calls)
+    Context-aware offline matching for ultra-fast, human-like reactions.
     """
     if not user_text or not user_text.strip():
         return ""
     
-    # Quick heuristic bypass for common cases (no API call needed)
+    import random
     text_lower = user_text.lower().strip()
+    words = text_lower.split()
     
-    # Greetings - no ack needed
-    greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "good night", "thanks", "thank you", "how are you", "what's up"]
+    # 1. Skip Acknowledgments for pure conversational flow or very short commands
+    greetings = ["hi", "hello", "hello max", "hey", "thanks", "thank you", "bye"]
     if any(text_lower.startswith(g) for g in greetings):
-        return ""
-    
-    # Excited responses
-    excited_words = ["yes!", "finally!", "it worked!", "done!", "amazing!", "awesome!", "let's go!"]
-    if any(w in text_lower for w in excited_words):
-        return random.choice(["Nice!", "Let's go!", "Finally!", "Love that!"])
-    
-    # Frustrated responses
-    frustrated_words = ["wrong", "mistake", "not right", "fix this", "why did you", "ugh", "again", "stupid", "damn", "shit", "fuck"]
-    if any(w in text_lower for w in frustrated_words):
-        return random.choice(["Sorry about that.", "My bad.", "Let me fix that.", "Oops, sorry."])
-    
-    # Tired responses
-    tired_words = ["tired", "sleepy", "exhausted", "long day", "done for today"]
-    if any(w in text_lower for w in tired_words):
-        return random.choice(["Hey, rest up.", "Take it easy.", "No rush."])
-    
-    try:
-        ack_prompt = (
-            "You are MAX — a real, human-feeling AI assistant. Give a short natural micro-reaction (1-5 words). "
-            "Sound human, warm, natural. Never robotic. VARY every time.\n\n"
-            "ACTION COMMANDS (open, play, close, set, send, search, volume):\n"
-            "Vary: 'On it.', 'Sure.', 'Yep.', 'Got you.', 'Alright.', 'One sec.', 'Right away.', 'Pulling that up.'\n\n"
-            "COMPLEX QUESTIONS (explain, research, what is, how does, why, difference):\n"
-            "Vary: 'Hmm.', 'Let me think.', 'Good one.', 'Give me a moment.', 'Working on it.'\n\n"
-            "CORRECTIONS/FRUSTRATED (wrong, mistake, fix, not right):\n"
-            "Vary: 'Sorry about that.', 'My bad.', 'Let me fix that.'\n\n"
-            "CRITICAL: Just the micro-reaction. 1-5 words only. Short, warm, real."
-        )
+        return "" 
         
-        async def call():
-            client = get_client()
-            return await client.chat.completions.create(
-                model=config.LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": ack_prompt},
-                    {"role": "user", "content": user_text.strip()[:200]}  # Limit input length
-                ],
-                temperature=0.8,  # Higher variety
-                max_tokens=15,
-            )
-            
-        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=4.0)
-        output = resp.choices[0].message.content.strip().strip('"\'')
+    # 2. Coding & Developer Tasks (Since you are a dev)
+    if any(w in text_lower for w in ["code", "script", "error", "bug", "debug", "fix", "deploy", "react", "python"]):
+        return random.choice(["Let's debug.", "Looking into the logic.", "On the code.", "Checking the syntax."])
         
-        # Clean common artifacts
-        cleaned = output.replace('*', '').replace('<', '').replace('>', '').replace('(', '').replace(')', '').strip().lower()
-        if not cleaned or cleaned in ("none", "null", "empty", "empty string", "..."):
-            return ""
-            
-        return output
-    except asyncio.TimeoutError:
-        return ""  # Silent fail on timeout - don't delay the response
-    except Exception:
-        return ""
-
+    # 3. PC & Smart Home Control
+    if any(w in text_lower for w in ["volume", "brightness", "fan", "light", "ac", "lock", "shutdown", "restart"]):
+        return random.choice(["Adjusting.", "Got it.", "System command received."])
+        
+    # 4. Apps & Media (Browser, YouTube, Spotify)
+    if any(w in text_lower for w in ["open", "play", "youtube", "spotify", "chrome", "launch", "github"]):
+        return random.choice(["Pulling that up.", "got it .", "Right away."])
+        
+    # 5. Research & Deep Questions
+    if any(w in text_lower for w in ["explain", "research", "difference", "how", "why", "what is", "search"]):
+        return random.choice(["Let me think.", "Checking my database.", "Gathering info.", "Give me a second."])
+        
+    # 6. Time & Scheduling (ActionScheduler / Calendar)
+    if any(w in text_lower for w in ["timer", "remind", "schedule", "alarm", "calendar", "note"]):
+        return random.choice(["Setting it up.", "Noted.", "Adding it to schedule."])
+        
+    # 7. Time-Aware Greetings
+    if "morning" in text_lower:
+        return random.choice(["Morning!", "Starting the day."])
+    elif "night" in text_lower or "sleep" in text_lower:
+        return random.choice(["Rest up.", "Goodnight."])
+        
+    # 8. Frustration / Corrections (Handling errors gracefully)
+    if any(w in text_lower for w in ["wrong", "mistake", "stop", "no", "incorrect", "fuck", "shit"]):
+        return random.choice(["My bad.", "Stopping.", "Let me fix that.", "Hold on."])
+        
+    # 9. Default Fallback
+    return random.choice(["Working on it.", "Give me a sec.", "Processing."])
 
 async def get_greeting() -> str:
     """Return a dynamic greeting instead of static text."""
@@ -389,7 +333,7 @@ async def get_response(user_text: str, memory_context: str = "", allow_skills: b
                 stop=["User:", "Sanket:"],  # Prevent continuing as user
             )
 
-        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=30.0)
+        resp = await asyncio.wait_for(execute_with_retry(call), timeout=30.0)
         raw = resp.choices[0].message.content.strip()
 
         skill_str = None
@@ -446,7 +390,7 @@ async def get_response_with_skill_result(user_text: str, skill_result_text: str,
                 max_tokens=200,
             )
 
-        resp = await asyncio.wait_for(_execute_with_retry(call), timeout=20.0)
+        resp = await asyncio.wait_for(execute_with_retry(call), timeout=20.0)
         final_text = resp.choices[0].message.content.strip()
 
         # Force inject HIBERNATE tag if needed
@@ -495,7 +439,7 @@ async def analyze_image_with_prompt(image_path: str, user_prompt: str) -> str:
                 max_tokens=2048,  # Increased for detailed analysis
             )
         
-        resp = await asyncio.wait_for(_execute_with_retry(call, max_retries=2), timeout=30.0)
+        resp = await asyncio.wait_for(execute_with_retry(call, max_retries=2), timeout=30.0)
         return resp.choices[0].message.content.strip()
 
     except Exception as e:

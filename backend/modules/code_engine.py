@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, Tuple, List
 
 from groq import AsyncGroq
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.CODE_ENGINE")
 
@@ -31,7 +32,6 @@ class CodeEngine:
         self.config = config
         self.workspace = config.WORKSPACE_DIR
         self.code_dir = config.CODE_SAVE_DIR
-        self.client = AsyncGroq(api_key=config.GROQ_API_KEY)
         self.languages = config.CODE_LANGUAGES
         self.timeout = config.AGENT_CODE_TIMEOUT
         self.max_file_size_kb = config.MAX_FILE_SIZE_KB
@@ -56,15 +56,18 @@ Rules:
             user_prompt += f"\n\nAdditional context: {extra_context}"
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.config.LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3,
-                max_tokens=2000,
-            )
+            async def call():
+                client = AsyncGroq(api_key=self.config.get_active_api_key())
+                return await client.chat.completions.create(
+                    model=self.config.LLM_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=2000,
+                )
+            response = await execute_with_retry(call)
             code = response.choices[0].message.content.strip()
             code = self._strip_markdown_code_blocks(code)
             return code
@@ -520,12 +523,15 @@ Provide a brief review covering:
 Keep it concise — max 5 bullet points."""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.config.LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=500,
-            )
+            async def call():
+                client = AsyncGroq(api_key=self.config.get_active_api_key())
+                return await client.chat.completions.create(
+                    model=self.config.LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.5,
+                    max_tokens=500,
+                )
+            response = await execute_with_retry(call)
             return response.choices[0].message.content.strip()
         except Exception:
             return "LLM review unavailable boss. Static analysis se kaam chala lo."
@@ -579,12 +585,15 @@ Original code:
 Return ONLY the fixed code, no explanations, no markdown blocks."""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.config.LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=2000,
-            )
+            async def call():
+                client = AsyncGroq(api_key=self.config.get_active_api_key())
+                return await client.chat.completions.create(
+                    model=self.config.LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=2000,
+                )
+            response = await execute_with_retry(call)
             return self._strip_markdown_code_blocks(response.choices[0].message.content.strip())
         except Exception:
             return code

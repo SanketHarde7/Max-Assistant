@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import config
-from agent_core import get_agent
+from agent_core import get_agent, set_websocket_globals
 from modules.stt import transcribe_audio, transcribe_file, transcribe_wake_word, is_valid_transcript
 from modules.tts import generate_tts
 from modules.llm import get_greeting
@@ -461,6 +461,9 @@ async def websocket_endpoint(websocket: WebSocket):
     global active_websocket, main_loop
     active_websocket = websocket
     main_loop = asyncio.get_running_loop()
+    
+    # Register globals in agent_core so acknowledgements can be sent
+    set_websocket_globals(active_websocket, main_loop)
 
     connection_state = {
         "active_task": None,

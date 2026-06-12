@@ -38,6 +38,7 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.SKILLFORGE")
 
@@ -549,19 +550,19 @@ class SkillForgeEngine:
 
     async def _generate_code(self, gap: str) -> Optional[str]:
         try:
-            from groq import AsyncGroq
-            client = AsyncGroq(api_key=self.config.get_active_api_key())
             prompt = _SKILL_GEN_PROMPT.replace("{gap}", gap[:300])
 
-            resp = await asyncio.wait_for(
-                client.chat.completions.create(
+            async def call():
+                from groq import AsyncGroq
+                client = AsyncGroq(api_key=self.config.get_active_api_key())
+                return await client.chat.completions.create(
                     model=self.config.LLM_MODEL,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.15,
                     max_tokens=700,
-                ),
-                timeout=30.0,
-            )
+                )
+
+            resp = await asyncio.wait_for(execute_with_retry(call), timeout=30.0)
             raw = resp.choices[0].message.content.strip()
             return raw.replace("```python", "").replace("```", "").strip() or None
 
@@ -571,19 +572,19 @@ class SkillForgeEngine:
 
     async def _generate_tests(self, code: str) -> list:
         try:
-            from groq import AsyncGroq
-            client = AsyncGroq(api_key=self.config.get_active_api_key())
             prompt = _TEST_GEN_PROMPT.replace("{code}", code[:600])
 
-            resp = await asyncio.wait_for(
-                client.chat.completions.create(
+            async def call():
+                from groq import AsyncGroq
+                client = AsyncGroq(api_key=self.config.get_active_api_key())
+                return await client.chat.completions.create(
                     model=self.config.LLM_MODEL,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                     max_tokens=100,
-                ),
-                timeout=15.0,
-            )
+                )
+
+            resp = await asyncio.wait_for(execute_with_retry(call), timeout=15.0)
             raw = resp.choices[0].message.content.strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             result = json.loads(raw)

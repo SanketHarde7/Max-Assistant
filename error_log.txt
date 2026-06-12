@@ -1,0 +1,35 @@
+THE ERROR IS:
+OSError(9, 'The handle is invalid', None, 6, None)
+
+Traceback (most recent call last):
+  File "c:\Users\sanke\OneDrive\Desktop\Jarvis\backend\test_voice.py", line 22, in <module>
+    for i, (graphemes, phonemes, audio) in enumerate(generator):
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\kokoro\pipeline.py", line 353, in __call__
+    pack = self.load_voice(voice).to(model.device) if model else None
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\kokoro\pipeline.py", line 155, in load_voice
+    packs = [self.load_single_voice(v) for v in voice.split(delimiter)]
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\kokoro\pipeline.py", line 155, in <listcomp>
+    packs = [self.load_single_voice(v) for v in voice.split(delimiter)]
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\kokoro\pipeline.py", line 134, in load_single_voice
+    f = hf_hub_download(repo_id=KModel.REPO_ID, filename=f'voices/{voice}.pt')
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\utils\_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\file_download.py", line 1014, in hf_hub_download
+    return _hf_hub_download_to_cache_dir(
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\file_download.py", line 1175, in _hf_hub_download_to_cache_dir
+    _download_to_tmp_and_move(
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\file_download.py", line 1742, in _download_to_tmp_and_move
+    http_get(
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\file_download.py", line 455, in http_get
+    progress_cm = _get_progress_bar_context(
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\utils\tqdm.py", line 299, in _get_progress_bar_context
+    return tqdm(
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\huggingface_hub\utils\tqdm.py", line 225, in __init__
+    super().__init__(*args, **kwargs)
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\tqdm\asyncio.py", line 24, in __init__
+    super().__init__(iterable, *args, **kwargs)
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\tqdm\std.py", line 1096, in __init__
+    self.sp = self.status_printer(self.fp)
+  File "C:\Users\sanke\OneDrive\Desktop\Jarvis\backend\.venv\lib\site-packages\tqdm\std.py", line 448, in status_printer
+    getattr(sys.stderr, 'flush', lambda: None)()
+OSError: [WinError 6] The handle is invalid

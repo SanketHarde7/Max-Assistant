@@ -9,6 +9,7 @@ import hashlib
 from typing import Dict, Optional
 from groq import AsyncGroq
 from config import config
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.ORCHESTRATOR.ROUTER")
 
@@ -205,21 +206,22 @@ class AIRouter:
         
         # 3. LLM-based routing for uncertain queries
         try:
-            key = self.config.get_active_api_key()
-            if not key:
-                logger.warning("No API key for AI router, using default.")
-                return getattr(self.config, 'AI_DEFAULT_PLATFORM', 'chatgpt')
-
-            client = AsyncGroq(api_key=key)
             prompt = _ROUTING_PROMPT.format(query=query[:500])  # Limit query length
 
-            resp = await client.chat.completions.create(
-                model=getattr(self.config, 'LLM_MODEL', 'llama-3.3-70b-versatile'),
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=80,
-            )
+            async def call():
+                key = self.config.get_active_api_key()
+                if not key:
+                    logger.warning("No API key for AI router, using default.")
+                    raise ValueError("No API key")
+                client = AsyncGroq(api_key=key)
+                return await client.chat.completions.create(
+                    model=getattr(self.config, 'LLM_MODEL', 'llama-3.3-70b-versatile'),
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=80,
+                )
 
+            resp = await execute_with_retry(call)
             raw = resp.choices[0].message.content.strip()
             data = None
             

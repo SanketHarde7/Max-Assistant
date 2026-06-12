@@ -19,6 +19,7 @@ from io import BytesIO
 from typing import Union
 from groq import AsyncGroq
 from config import config
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.STT")
 
@@ -114,26 +115,17 @@ async def transcribe_audio(
         if language:
             kwargs["language"] = language
 
-        # Retry once on failure
-        max_retries = 2
-        last_error = None
-        for attempt in range(max_retries):
-            try:
-                client = AsyncGroq(api_key=config.GROQ_API_KEY)
-                resp = await client.audio.transcriptions.create(**kwargs)
-                result = resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
-                if result:
-                    return result
-                return ""
-            except Exception as e:
-                last_error = e
-                if attempt < max_retries - 1:
-                    logger.warning(f"STT attempt {attempt + 1} failed: {e}, retrying...")
-                    await asyncio.sleep(0.5)
-                else:
-                    logger.error(f"STT failed after {max_retries} attempts: {e}")
+        async def call():
+            client = AsyncGroq(api_key=config.get_active_api_key())
+            resp = await client.audio.transcriptions.create(**kwargs)
+            return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
 
-        return ""
+        try:
+            result = await execute_with_retry(call, max_retries=2)
+            return result if result else ""
+        except Exception as e:
+            logger.error(f"STT failed: {e}")
+            return ""
 
     except Exception as e:
         logger.error(f"STT failed: {e}")
@@ -154,7 +146,6 @@ async def transcribe_file(
     language: str = ""
 ) -> str:
     """Transcribe an existing audio file."""
-    client = AsyncGroq(api_key=config.GROQ_API_KEY)
     try:
         with open(audio_path, "rb") as f:
             audio_bytes = f.read()
@@ -168,8 +159,12 @@ async def transcribe_file(
         if language:
             kwargs["language"] = language
 
-        resp = await client.audio.transcriptions.create(**kwargs)
-        return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
+        async def call():
+            client = AsyncGroq(api_key=config.get_active_api_key())
+            resp = await client.audio.transcriptions.create(**kwargs)
+            return resp.text.strip() if hasattr(resp, 'text') else str(resp).strip()
+
+        return await execute_with_retry(call, max_retries=2)
     except Exception as e:
         logger.error(f"STT file failed: {e}")
         return ""

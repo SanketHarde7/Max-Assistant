@@ -23,7 +23,7 @@ sentence-transformers>=2.7.0  # all-MiniLM-L6-v2 embeddings (~90MB one-time down
 pdfminer.six>=20231228        # PDF text extraction
 python-docx>=1.1.0            # DOCX text extraction
 Pillow>=10.0.0                # Image processing/OCR
-
+DOCX
 
 # -- System info --             (NEW)
 psutil>=5.9.8                 # CPU, RAM, disk, battery, processes

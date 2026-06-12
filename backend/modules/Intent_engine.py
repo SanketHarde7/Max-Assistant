@@ -32,6 +32,7 @@ import re
 from enum import Enum
 from typing import Dict, Optional
 from dataclasses import dataclass, field
+from api_utils import execute_with_retry
 
 logger = logging.getLogger("MAX.INTENT")
 
@@ -254,20 +255,21 @@ class IntentEngine:
     async def _llm_classify(self, text: str) -> Intent:
         from groq import AsyncGroq
 
-        key = self.config.get_active_api_key()
-        if not key:
-            raise ValueError("No API key available")
-
-        client = AsyncGroq(api_key=key)
         prompt = _PROMPT.replace("{text}", text.strip())
 
-        resp = await client.chat.completions.create(
-            model=self.config.LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,    # Must be deterministic
-            max_tokens=80,      # We only need the JSON
-        )
+        async def call():
+            key = self.config.get_active_api_key()
+            if not key:
+                raise ValueError("No API key available")
+            client = AsyncGroq(api_key=key)
+            return await client.chat.completions.create(
+                model=self.config.LLM_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,    # Must be deterministic
+                max_tokens=80,      # We only need the JSON
+            )
 
+        resp = await execute_with_retry(call)
         raw = resp.choices[0].message.content.strip()
         return self._parse_response(raw)
 

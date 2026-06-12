@@ -86,23 +86,6 @@ class MaxAgent:
             except Exception as e:
                 logger.debug(f"Ack text send failed: {e}")
                 return  
-            
-            if use_tts:
-                try:
-                    ack_tts_path = await asyncio.wait_for(generate_tts(ack_text), timeout=5.0)
-                    if ack_tts_path:
-                        import base64
-                        import os
-                        if os.path.exists(ack_tts_path):
-                            with open(ack_tts_path, "rb") as f:
-                                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
-                                await ws.send_json({"event": "audio_response", "audio": encoded_audio})
-                            try:
-                                os.remove(ack_tts_path)
-                            except Exception:
-                                pass
-                except Exception as e:
-                    logger.debug(f"Ack TTS failed: {e}")
         except Exception as e:
             logger.debug(f"Ack dispatch failed: {e}")
 
@@ -157,6 +140,14 @@ class MaxAgent:
                 if action == "execute":
                     skill_tag = lm_result.get("skill_tag")
                     print(f"🟢 [TRACKER] Fast Brain Execute -> {skill_tag}")
+                    
+                    try:
+                        fast_ack = await asyncio.wait_for(get_acknowledgment(text), timeout=1.0)
+                        if fast_ack:
+                            asyncio.create_task(self._send_ack_via_websocket(fast_ack, False))
+                    except Exception:
+                        pass
+                        
                     memory_context = self.memory.get_context()
                     skill_result = await self.skills.parse_and_execute(skill_tag, memory_context, text)
                     if skill_result.get("executed"):
@@ -305,11 +296,16 @@ class MaxAgent:
     
     async def process_ghost_mode_test(self, user_text: str) -> Optional[dict]:
         import pyautogui
-        pyautogui.FAILSAFE = True 
+        import re
+        from modules.listening_manager import LocalFastBrain
+        pyautogui.FAILSAFE = False 
         
-        text_clean = user_text.lower().strip()
+        # 🛠️ FIX 1: Punctuation (.,!?) hatao taaki STT ke full-stops se match fail na ho
+        text_clean = re.sub(r'[^\w\s]', '', user_text.lower()).strip()
 
-        if "activate ghost mode" in text_clean:
+        # 1. Activation Check
+        activation_phrases = ["activate ghost mode", "ghost mode on", "start ghost mode", "enable ghost mode"]
+        if any(phrase in text_clean for phrase in activation_phrases):
             self.ghost_mode = True
             logger.info("👻 Ghost Mode Activated via Test Protocol")
             return {"response": "Ghost mode active.", "skill_used": "ghost_activate"}
@@ -317,46 +313,56 @@ class MaxAgent:
         if not self.ghost_mode:
             return None
 
-        if "exit ghost mode" in text_clean or "terminate protocol" in text_clean:
+        # 2. Deactivation Check
+        deactivation_phrases = ["exit ghost mode", "terminate protocol", "ghost mode off", "stop ghost mode", "disable ghost mode", "deactivate ghost mode"]
+        if any(phrase in text_clean for phrase in deactivation_phrases):
             self.ghost_mode = False
             logger.info("🚫 Ghost Mode Deactivated")
             return {"response": "Exited.", "skill_used": "ghost_deactivate"}
 
+        # 3. Deterministic Command Mapping
         try:
-            if text_clean in ["press enter", "enter maro", "hit enter"]:
+            # 🛠️ FIX 2: Exact match (==) ki jagah Substring match (in) use kiya
+            if any(cmd in text_clean for cmd in ["press enter", "enter maro", "hit enter", "enter daba"]):
                 pyautogui.press('enter')
                 return {"response": "Done.", "skill_used": "key_enter"}
                 
-            elif text_clean in ["press tab", "tab maro"]:
+            elif any(cmd in text_clean for cmd in ["press tab", "tab maro", "tab daba"]):
                 pyautogui.press('tab')
                 return {"response": "Done.", "skill_used": "key_tab"}
                 
-            elif text_clean in ["press backspace", "backspace"]:
+            elif any(cmd in text_clean for cmd in ["press backspace", "backspace", "clear", "undo"]):
                 pyautogui.press('backspace')
                 return {"response": "Done.", "skill_used": "key_backspace"}
 
-            elif text_clean in ["switch window", "window badlo", "alt tab"]:
+            elif any(cmd in text_clean for cmd in ["switch window", "window badlo", "alt tab"]):
                 pyautogui.hotkey('alt', 'tab')
                 return {"response": "Done.", "skill_used": "hotkey_alt_tab"}
                 
-            elif text_clean in ["minimize app", "minimize"]:
+            elif any(cmd in text_clean for cmd in ["minimize app", "minimize window", "minimize"]):
                 pyautogui.hotkey('win', 'down')
                 return {"response": "Done.", "skill_used": "hotkey_minimize"}
 
-            elif text_clean in ["volume up", "aawaz badhao"]:
+            elif any(cmd in text_clean for cmd in ["volume up", "aawaz badhao", "increase volume"]):
                 pyautogui.press('volumeup')
                 return {"response": "Done.", "skill_used": "volume_up"}
                 
-            elif text_clean in ["volume down", "aawaz kam karo"]:
+            elif any(cmd in text_clean for cmd in ["volume down", "aawaz kam karo", "decrease volume"]):
                 pyautogui.press('volumedown')
                 return {"response": "Done.", "skill_used": "volume_down"}
 
-            pyautogui.write(user_text + " ", interval=0.01)
-            return {"response": "Typed.", "skill_used": "direct_dictation"}
+            # 4. Fallback: Type the text directly
+            # Yahan hum original user_text use karenge taaki capital letters aur dots type karte waqt sahi rahein
+            # We must strip the wake word (like "max") before typing it!
+            final_type_text = LocalFastBrain.strip_wake_word(user_text)
+            if final_type_text:
+                pyautogui.write(final_type_text + " ", interval=0.01)
+            # Returning empty response prevents MAX from saying "Typed." every single time!
+            return {"response": "", "skill_used": "direct_dictation"}
 
         except Exception as e:
             logger.error(f"Ghost Mode hardware execution error: {e}")
-            return {"response": "Error.", "skill_used": "ghost_error"}    
+            return {"response": "Error.", "skill_used": "ghost_error"}
 
 # Singleton
 _agent: Optional[MaxAgent] = None
