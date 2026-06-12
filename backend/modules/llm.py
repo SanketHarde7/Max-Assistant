@@ -316,13 +316,23 @@ async def get_response(user_text: str, memory_context: str = "", allow_skills: b
     Increased token limit for better responses.
     """
     try:
+        # Short-TTL dedupe cache — rapid duplicate triggers reuse the same result
+        # instead of burning another Groq request.
+        cache_id = make_cache_key(
+            "resp", user_text.strip(), str(allow_skills), (memory_context or "")[:300]
+        )
+        cached = response_cache.get(cache_id)
+        if cached is not None:
+            logger.info("⚡ Cache hit — skipped one Groq request.")
+            return cached
+
         if allow_skills:
             system_prompt = SYSTEM_PROMPT_SKILLS.replace("{memory_context}", memory_context or "None")
         else:
             system_prompt = SYSTEM_PROMPT_CONVERSATION.replace("{memory_context}", memory_context or "None")
 
         async def call():
-            client = get_client()
+            client = await get_client()
             return await client.chat.completions.create(
                 model=config.LLM_MODEL,
                 messages=[
